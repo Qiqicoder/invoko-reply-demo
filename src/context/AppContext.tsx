@@ -88,16 +88,15 @@ export interface AppContextValue extends AppState {
   advanceToNext: () => void;
 
   /**
-   * Submit free text from the Panel input bar (Module E fix 2 + 4).
+   * Submit free text from the Panel input bar.
    *
-   *   - If the next scripted frame is a `userMessage`, substitute its
-   *     `.text` with `text` and advance into it.
-   *   - Otherwise, push a `userMessage` to history *without* advancing the
-   *     script (live insert), so the bubble appears in-line; the engine's
-   *     userMessage auto-advance will then move to the next script frame.
+   * The typed text is consumed (not echoed as a user bubble — the Panel
+   * intentionally suppresses that visual). The story is expected to
+   * follow the user's input with a thinking + draft regeneration, so we
+   * just advance to the next scripted frame.
    *
-   * In both cases the resulting `userMessage` lands as currentFrame and
-   * the Panel's auto-advance effect drives the conversation forward.
+   * Module F will route the consumed text into the regen prompt; for
+   * Module E the text is dropped after triggering advance.
    */
   submitUserInput: (text: string) => void;
 }
@@ -213,40 +212,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-
-      // Branch A: the next scripted frame is a userMessage placeholder.
-      // Substitute the user's text into that slot and consume the script
-      // step. (e.g. test story's `userMessage('Make it more concise.')`)
-      if (storyFrames) {
-        const nextIdx = scriptIndex + 1;
-        const next = storyFrames[nextIdx];
-        if (next && next.type === "userMessage") {
-          setScriptIndex(nextIdx);
-          setFrameHistory((prev) => [
-            ...prev,
-            { type: "userMessage", text: trimmed },
-          ]);
-          // Substituted into a userMessage slot → never a screenshot frame;
-          // exit screenshot mode if it somehow was active.
-          setPanelState((curr) =>
-            curr === "screenshotting" ? "idle" : curr,
-          );
-          return;
-        }
-      }
-
-      // Branch B: live insert without consuming a script step. The userMessage
-      // auto-advance effect in Panel.tsx will then move us to the next
-      // scripted frame.
-      setFrameHistory((prev) => [
-        ...prev,
-        { type: "userMessage", text: trimmed },
-      ]);
-      setPanelState((curr) =>
-        curr === "screenshotting" ? "idle" : curr,
-      );
+      // Module E: text is consumed; no user-message bubble is rendered.
+      // Advance to the next scripted frame (typically a thinking/draft
+      // regen). Module F will instead route `trimmed` into the regen
+      // prompt before advancing.
+      advanceToNext();
     },
-    [storyFrames, scriptIndex],
+    [advanceToNext],
   );
 
   const value = useMemo<AppContextValue>(

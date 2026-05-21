@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useApp } from "../../context/AppContext";
 import type { Frame } from "../../stories/types";
 import { PanelCalendarConfirm } from "./PanelCalendarConfirm";
@@ -9,7 +9,6 @@ import { PanelMessage } from "./PanelMessage";
 import { PanelOptions } from "./PanelOptions";
 import { PanelQuickActions } from "./PanelQuickActions";
 import { PanelToast } from "./PanelToast";
-import { PanelUserMessage } from "./PanelUserMessage";
 
 /**
  * Reply Panel (PRD §C + Module E conversation engine).
@@ -19,15 +18,22 @@ import { PanelUserMessage } from "./PanelUserMessage";
  *   - Keyboard: F toggles, Esc closes
  *   - Click outside closes (except during screenshot mode — overlay owns it)
  *
- *   --- Module E ---
- *   - Renders `frameHistory` above the input bar as a stacked conversation
- *   - Dispatches by frame.type to the right child component
- *   - Auto-advances for the four "passive" frame types:
- *       • screenshot   → fires when ScreenshotOverlay sets capturedTarget
- *       • thinking     → PanelMessage fires onComplete after stagger finishes
- *       • userMessage  → 600ms after the bubble appears (Module E fix 2/4)
- *       • toast        → PanelToast fires onDismiss after `duration` ms
+ *   --- Module E (single-frame render) ---
+ *   - Only the CURRENT frame is rendered in the conversation area; previous
+ *     frames fade out as the next one fades in. `frameHistory` in context
+ *     still tracks the full sequence for state purposes, but the Panel
+ *     visualises just `currentFrame` (PRD §13 — Frame transition: 0.25s,
+ *     ease easeOut).
+ *   - Auto-advances for the "passive" frame types — all owned here so the
+ *     timers are cancelled cleanly when AnimatePresence swaps frames:
+ *       • screenshot  → fires when ScreenshotOverlay sets capturedTarget
+ *       • thinking    → Panel timer matches PanelMessage stagger length
+ *       • toast       → PanelToast fires onDismiss after `duration` ms
  *   - Quick actions / options / draft / calendar wait on user input.
+ *   - Toast renders OUTSIDE the Panel container at bottom-center.
+ *   - `userMessage` frames (if any reach this engine) are intentionally
+ *     hidden — typed feedback is consumed by `submitUserInput` and the
+ *     story is expected to follow with a thinking/draft frame.
  */
 export function Panel() {
   const {
@@ -35,16 +41,12 @@ export function Panel() {
     panelState,
     openPanel,
     closePanel,
-    frameHistory,
+    scriptIndex,
     currentFrame,
     capturedTarget,
     advanceToNext,
   } = useApp();
   const panelRef = useRef<HTMLDivElement | null>(null);
-
-  /** Per-frame selection cache (e.g. which option was clicked) so settled
-   * frames can stay visually selected even after we've advanced. */
-  const [selections, setSelections] = useState<Record<number, number>>({});
 
   /* ------------------------ Keyboard: F + Esc ------------------------ */
   useEffect(() => {
@@ -89,11 +91,6 @@ export function Panel() {
     return () => window.removeEventListener("mousedown", onMouseDown);
   }, [panelOpen, panelState, closePanel]);
 
-  /* ----------- Reset per-frame selection cache when Panel closes ---------- */
-  useEffect(() => {
-    if (!panelOpen) setSelections({});
-  }, [panelOpen]);
-
   /* --------- Auto-advance: screenshot frame on capturedTarget set --------- */
   useEffect(() => {
     if (!panelOpen) return;
@@ -105,35 +102,43 @@ export function Panel() {
     return () => clearTimeout(t);
   }, [panelOpen, currentFrame, capturedTarget, advanceToNext]);
 
-  /* --------- Auto-advance: userMessage frame after a beat ---------
-   * Whether scripted or live-inserted via the input bar, a userMessage
-   * bubble shows for ~600ms before we move to the next scripted frame —
-   * gives the user a moment to register their message before the AI
-   * "responds". */
+  /* --------- Auto-advance: thinking frame after stagger completes ---------
+   * Owned by Panel rather than PanelMessage so that when the user types
+   * feedback mid-stagger, the cleanup here cancels the timer cleanly —
+   * a timer inside the unmounting PanelMessage could otherwise fire
+   * during AnimatePresence's exit phase and cause a double-advance. */
   useEffect(() => {
     if (!panelOpen) return;
-    if (currentFrame?.type !== "userMessage") return;
-    const t = setTimeout(() => advanceToNext(), 600);
+    if (currentFrame?.type !== "thinking") return;
+    // Matches PanelMessage's stagger: STEP_DELAY=0.4s × lines + TRAILING=0.5s.
+    const ms = currentFrame.lines.length * 400 + 500;
+    const t = setTimeout(() => advanceToNext(), ms);
     return () => clearTimeout(t);
   }, [panelOpen, currentFrame, advanceToNext]);
 
-  /* ----------------- Compute inline-renderable frames ---------------- */
+  /* --------- Auto-skip: userMessage frame (kept hidden per spec) ---------
+   * User-message bubbles are intentionally suppressed; the typed text is
+   * consumed by submitUserInput. If a story script does land on a
+   * userMessage frame anyway, advance immediately on next tick. */
+  useEffect(() => {
+    if (!panelOpen) return;
+    if (currentFrame?.type !== "userMessage") return;
+    const t = setTimeout(() => advanceToNext(), 0);
+    return () => clearTimeout(t);
+  }, [panelOpen, currentFrame, advanceToNext]);
 
-  /**
-   * Frames that show up in the conversation area. `screenshot` is handled
-   * by Module D's overlay (no inline UI), and `toast` is rendered as a
-   * fixed-position overlay outside the Panel container.
-   */
-  const inlineFrames = useMemo(() => {
-    return frameHistory
-      .map((frame, i) => ({ frame, originalIndex: i }))
-      .filter(
-        ({ frame }) => frame.type !== "screenshot" && frame.type !== "toast",
-      );
-  }, [frameHistory]);
+  /* ----------------- Determine what to render in conversation ---------------- */
 
-  const hasContentAbove = inlineFrames.length > 0;
-  const activeFrameIndex = frameHistory.length - 1;
+  // `screenshot`, `toast`, and `userMessage` never render inline.
+  const conversationFrame: Frame | null =
+    currentFrame &&
+    currentFrame.type !== "screenshot" &&
+    currentFrame.type !== "toast" &&
+    currentFrame.type !== "userMessage"
+      ? currentFrame
+      : null;
+
+  const hasContentAbove = conversationFrame !== null;
 
   /** Toast frame to render (if current is a toast). */
   const activeToast =
@@ -141,17 +146,20 @@ export function Panel() {
 
   /* --------------- Action handlers, memoised for child use --------------- */
 
+  const handleAdvance = useCallback(() => {
+    advanceToNext();
+  }, [advanceToNext]);
+
   const handleSelect = useCallback(
-    (frameIndex: number, choice: number) => {
-      setSelections((prev) => ({ ...prev, [frameIndex]: choice }));
+    // Module E (single-frame mode): selection identity isn't tracked across
+    // frames because past frames no longer render. The choice is consumed
+    // and we just advance. Module F may route the choice into branching
+    // logic via this same hook.
+    (_choice: number) => {
       advanceToNext();
     },
     [advanceToNext],
   );
-
-  const handleAdvance = useCallback(() => {
-    advanceToNext();
-  }, [advanceToNext]);
 
   /* ----------------------------- Render ----------------------------- */
 
@@ -170,9 +178,15 @@ export function Panel() {
             }}
             transition={{ type: "spring", damping: 22, stiffness: 280 }}
           >
-            <div
+            <motion.div
               ref={panelRef}
               data-invoko-panel
+              // `layout` smoothly animates the Panel's height when the
+              // current frame swaps to one of a different size. Without
+              // it, mode="wait" exits would leave the panel briefly empty
+              // (height collapses) before the next frame fades in.
+              layout
+              transition={{ type: "spring", damping: 28, stiffness: 280 }}
               className="pointer-events-auto overflow-hidden bg-paper"
               style={{
                 width: 720,
@@ -182,44 +196,43 @@ export function Panel() {
                   "0 4px 24px rgba(29, 25, 22, 0.08), 0 1px 3px rgba(29, 25, 22, 0.04)",
               }}
             >
-              {hasContentAbove && (
-                <div
-                  // Scrollable conversation area — caps near viewport height
-                  style={{
-                    maxHeight: "calc(100vh - 200px)",
-                    overflowY: "auto",
-                  }}
-                >
-                  {inlineFrames.map(({ frame, originalIndex }) => (
+              <AnimatePresence mode="wait" initial={false}>
+                {conversationFrame && (
+                  <motion.div
+                    // Key by scriptIndex so each frame swap triggers a
+                    // mount/unmount cycle (driving enter + exit anims).
+                    key={scriptIndex}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                    style={{
+                      maxHeight: "calc(100vh - 200px)",
+                      overflowY: "auto",
+                    }}
+                  >
                     <FrameRouter
-                      key={originalIndex}
-                      frame={frame}
-                      isActive={originalIndex === activeFrameIndex}
-                      selection={selections[originalIndex]}
-                      onSelect={(c) => handleSelect(originalIndex, c)}
+                      frame={conversationFrame}
+                      onSelect={handleSelect}
                       onAdvance={handleAdvance}
                     />
-                  ))}
-                </div>
-              )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <PanelInput hasContentAbove={hasContentAbove} />
-            </div>
+            </motion.div>
             <VoiceHint />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Toast is rendered outside the Panel container so it can sit at the
-          bottom-center while the rest of the conversation stays at the top.
-          PanelToast manages its own slide-up/slide-down animation; onDismiss
-          fires after the slide-down exit completes — that drives advanceToNext
-          which (at end-of-story) closes the Panel. */}
+      {/* Toast renders outside the Panel container at bottom-center.
+          It manages its own enter/dwell/exit lifecycle and calls onDismiss
+          after the exit animation completes — that drives advanceToNext
+          (which at end-of-story closes the Panel). */}
       {activeToast && (
         <PanelToast
-          // Key on history length so re-using the same toast frame (rare —
-          // would only happen if a story re-emits a toast) gives us a fresh
-          // animation cycle rather than reusing the old one.
-          key={frameHistory.length}
+          key={`toast-${scriptIndex}`}
           frame={activeToast}
           onDismiss={handleAdvance}
         />
@@ -229,21 +242,18 @@ export function Panel() {
 }
 
 /* --------------------------------------------------------------------------- *
- * FrameRouter — dispatches a single Frame to the right component.
- * Lives in the same file because every frame type calls back into actions
- * defined on Panel; co-locating avoids a 7-prop dance through a separate file.
+ * FrameRouter — dispatches a single Frame to the right component. Every frame
+ * rendered through here is the current one (no inactive/past renders), so
+ * `isActive` is always true. We pass it through for API stability with the
+ * child components — they still gate their interactive bits on it.
  * --------------------------------------------------------------------------- */
 
 function FrameRouter({
   frame,
-  isActive,
-  selection,
   onSelect,
   onAdvance,
 }: {
   frame: Frame;
-  isActive: boolean;
-  selection: number | undefined;
   /** Called when the frame has a "choice" associated (options, quickActions). */
   onSelect: (choice: number) => void;
   /** Called for choice-less advances (thinking auto-complete, Send, etc.). */
@@ -252,15 +262,14 @@ function FrameRouter({
   switch (frame.type) {
     case "screenshot":
     case "toast":
-      // Handled outside the inline-render path. Shouldn't get here, but
-      // return null defensively.
+    case "userMessage":
+      // Handled outside the inline-render path (or intentionally hidden).
       return null;
     case "quickActions":
       return (
         <PanelQuickActions
           frame={frame}
-          isActive={isActive}
-          selection={selection}
+          isActive
           onSelect={onSelect}
         />
       );
@@ -268,16 +277,18 @@ function FrameRouter({
       return (
         <PanelMessage
           frame={frame}
-          isActive={isActive}
-          onComplete={isActive ? onAdvance : undefined}
+          isActive
+          // onComplete intentionally omitted — Panel.tsx owns the
+          // auto-advance timer (see thinking useEffect there). Letting
+          // PanelMessage fire onComplete during AnimatePresence's exit
+          // phase would cause a double advance.
         />
       );
     case "options":
       return (
         <PanelOptions
           frame={frame}
-          isActive={isActive}
-          selection={selection}
+          isActive
           onSelect={onSelect}
         />
       );
@@ -297,17 +308,13 @@ function FrameRouter({
           {frame.prompt}
         </div>
       );
-    case "userMessage":
-      return <PanelUserMessage frame={frame} />;
     case "draft":
-      return (
-        <PanelDraft frame={frame} isActive={isActive} onSend={onAdvance} />
-      );
+      return <PanelDraft frame={frame} isActive onSend={onAdvance} />;
     case "calendarConfirm":
       return (
         <PanelCalendarConfirm
           frame={frame}
-          isActive={isActive}
+          isActive
           onConfirm={onAdvance}
           onAdjust={onAdvance}
         />

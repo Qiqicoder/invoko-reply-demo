@@ -9,14 +9,15 @@ import type { Frame } from "./types";
  * loads this script + sets `currentStory = 1` so the Gmail window with
  * Sarah's email is visible (gives the screenshot something to snap to).
  *
- * Flow:
+ * Flow (each frame REPLACES the previous one — Panel renders only the
+ * current frame, no stacked conversation):
  *   1. screenshot      — drag Sarah's email
  *   2. quickActions    — three cards, "Reply" recommended
  *   3. thinking        — three staggered lines
  *   4. options         — three options, "Option C" recommended
  *   5. draft v1        — body with one [mem: …] highlight
- *   6. userMessage     — placeholder text; substituted with the user's
- *                        typed feedback if they type in the input bar
+ *   6. thinking (regen) — fires whether the user clicks Send on v1 or
+ *                         types feedback into the input bar
  *   7. draft v2        — regenerated draft incorporating the feedback
  *   8. toast           — confirmation, auto-dismisses after 5s
  */
@@ -54,10 +55,11 @@ export const TEST_STORY: Frame[] = [
     attachment: { name: "Test.pdf", type: "pdf" },
   },
   {
-    // Placeholder text — overwritten by whatever the user actually types
-    // into the input bar (see AppContext.submitUserInput).
-    type: "userMessage",
-    text: "Make it more concise and warmer.",
+    type: "thinking",
+    lines: [
+      "Got your feedback.",
+      "Regenerating with a warmer tone…",
+    ],
   },
   {
     type: "draft",
