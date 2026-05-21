@@ -9,18 +9,26 @@ import {
 import type { Frame } from "../stories/types";
 
 /* ---------------------------------------------------------------------------
- * Global app state (PRD §A6 + Module E engine extensions).
+ * Global app state (PRD §A6 + Module E engine extensions + Module F state
+ * continuity).
  *
- *   currentStory    – which story is active (1, 2, 3) or null when idle
- *   panelState      – high-level Panel lifecycle (drives which sub-UI shows)
- *   panelOpen       – is the Panel currently visible (toggled by F / Esc / etc.)
- *   replyPageOpen   – is the main Reply page overlay visible (Cmd+R)
- *   capturedTarget  – which `data-mock-target` was just screenshot-captured
+ *   currentStory       – which story is active (1, 2, 3) or null when idle
+ *   panelState         – Panel lifecycle (drives which sub-UI shows)
+ *   panelOpen          – is the Panel currently visible (F / Esc / etc.)
+ *   replyPageOpen      – is the main Reply page overlay visible (Cmd+R)
+ *   capturedTarget     – which `data-mock-target` was just screenshot-captured
  *
  *   --- Module E (Conversation Engine) ---
- *   storyFrames     – the full Frame[] for the active story (null when idle)
- *   frameHistory    – frames the user has progressed through, in order
- *   currentFrame    – derived: last item of frameHistory (the active frame)
+ *   storyFrames        – full Frame[] for the active story (null when idle)
+ *   frameHistory       – frames the user has progressed through
+ *   currentFrame       – derived: last item of frameHistory (or null)
+ *
+ *   --- Module F (state continuity, PRD §F7 + §6.3) ---
+ *   addedPeople        – ids of People revealed by a story action (Sarah after
+ *                        Story 1). Persists across story switches so Module H's
+ *                        Reply page reflects them after the user replays.
+ *   completedStories   – ids of stories the user has played to the toast.
+ *                        Used by ScenarioSwitcher to highlight the next story.
  * --------------------------------------------------------------------------- */
 
 export type StoryId = 1 | 2 | 3;
@@ -50,6 +58,15 @@ export interface AppState {
   scriptIndex: number;
   /** Derived from frameHistory: the last item or null. */
   currentFrame: Frame | null;
+  /** PRD §F7 — people revealed by a story action (e.g. Sarah after Story 1). */
+  addedPeople: ReadonlySet<string>;
+  /** Stories the user has played to completion (toast → close). */
+  completedStories: ReadonlySet<StoryId>;
+  /**
+   * Story to surface as the natural next step in the ScenarioSwitcher.
+   * Derived from completedStories: 1 done → 2; 2 done → 3; 3 done → null.
+   */
+  suggestedNextStory: StoryId | null;
 }
 
 export interface AppContextValue extends AppState {
@@ -69,6 +86,14 @@ export interface AppContextValue extends AppState {
   closePanel: () => void;
   /** Start a story by id (PRD §D5 revised): sets currentStory, closes Panel. */
   startStory: (story: StoryId) => void;
+
+  /**
+   * Module F entry point — start a story AND immediately load its frames
+   * into the engine (PRD §F2 + §F3). The Panel opens, panelState reflects
+   * the first frame (typically `screenshotting`), and the user is dropped
+   * directly into the experience. Use this from the ScenarioSwitcher.
+   */
+  startStoryWithFrames: (story: StoryId, frames: Frame[]) => void;
 
   /**
    * Module E — load a Frame[] as the active script. Opens the Panel,
@@ -114,11 +139,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [frameHistory, setFrameHistory] = useState<Frame[]>([]);
   const [scriptIndex, setScriptIndex] = useState<number>(0);
 
+  const [addedPeople, setAddedPeople] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const [completedStories, setCompletedStories] = useState<
+    ReadonlySet<StoryId>
+  >(() => new Set<StoryId>());
+
   const currentFrame = useMemo<Frame | null>(
     () =>
       frameHistory.length > 0 ? frameHistory[frameHistory.length - 1] : null,
     [frameHistory],
   );
+
+  /**
+   * Suggested next story — surfaces in the ScenarioSwitcher as a "Next"
+   * badge. Only meaningful AFTER the user has finished a story; before
+   * any completion the default Story 1 entry already reads as the
+   * obvious starting point, so a "Next" cue there would be redundant.
+   */
+  const suggestedNextStory = useMemo<StoryId | null>(() => {
+    if (completedStories.size === 0) return null;
+    const order: StoryId[] = [1, 2, 3];
+    for (const id of order) {
+      if (!completedStories.has(id)) return id;
+    }
+    return null;
+  }, [completedStories]);
 
   /* ----------------------- Internal helpers ----------------------- */
 
@@ -164,6 +211,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [resetFrames],
   );
 
+  const startStoryWithFrames = useCallback(
+    (story: StoryId, frames: Frame[]) => {
+      // PRD §F2 + §F3: set story context AND drop the user straight into
+      // the script. React batches these state updates into one render so
+      // GmailWindow, Panel, and ScreenshotOverlay all mount together.
+      if (frames.length === 0) return;
+      const first = frames[0];
+      setCurrentStory(story);
+      setStoryFrames(frames);
+      setFrameHistory([first]);
+      setScriptIndex(0);
+      setCapturedTarget(null);
+      setPanelState(first.type === "screenshot" ? "screenshotting" : "idle");
+      setPanelOpen(true);
+    },
+    [],
+  );
+
   /* --------------------- Module E: frame engine --------------------- */
 
   const loadStory = useCallback((frames: Frame[]) => {
@@ -189,11 +254,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const nextIdx = scriptIndex + 1;
     const next = storyFrames[nextIdx];
     if (!next) {
-      // End of story — defer panel close so we don't setState during
-      // another component's render.
+      // End of story — defer panel close + side effects so we don't
+      // setState during another component's render.
+      const justFinished = currentStory;
       queueMicrotask(() => {
         setPanelOpen(false);
         setPanelState("idle");
+        if (justFinished !== null) {
+          setCompletedStories((prev) => {
+            if (prev.has(justFinished)) return prev;
+            const next = new Set(prev);
+            next.add(justFinished);
+            return next;
+          });
+          // PRD §F7: Sarah is "added to People as Investor" at the end
+          // of Story 1. Module H's ReplyPage will read `addedPeople` to
+          // render her card.
+          if (justFinished === 1) {
+            setAddedPeople((prev) => {
+              if (prev.has("sarah")) return prev;
+              const next = new Set(prev);
+              next.add("sarah");
+              return next;
+            });
+          }
+          // Story 2 / 3 side effects (docs, calendar, etc.) land here in
+          // Module G — keeping the dispatch shape consistent.
+        }
       });
       return;
     }
@@ -206,7 +293,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         curr === "screenshotting" ? "idle" : curr,
       );
     }
-  }, [storyFrames, scriptIndex]);
+  }, [storyFrames, scriptIndex, currentStory]);
 
   const submitUserInput = useCallback(
     (text: string) => {
@@ -232,6 +319,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       frameHistory,
       scriptIndex,
       currentFrame,
+      addedPeople,
+      completedStories,
+      suggestedNextStory,
       setCurrentStory,
       setPanelState,
       setPanelOpen,
@@ -242,6 +332,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openPanel,
       closePanel,
       startStory,
+      startStoryWithFrames,
       loadStory,
       advanceFrame,
       advanceToNext,
@@ -257,11 +348,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       frameHistory,
       scriptIndex,
       currentFrame,
+      addedPeople,
+      completedStories,
+      suggestedNextStory,
       resetPanel,
       resetFrames,
       openPanel,
       closePanel,
       startStory,
+      startStoryWithFrames,
       loadStory,
       advanceFrame,
       advanceToNext,
