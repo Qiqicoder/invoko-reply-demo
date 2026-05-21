@@ -33,8 +33,15 @@ export function PanelInput({
   hasContentAbove?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const { capturedTarget, submitUserInput } = useApp();
+  const { capturedTarget, submitUserInput, frameHistory } = useApp();
   const [value, setValue] = useState("");
+
+  /**
+   * "New Chat" until the user has actually interacted with the AI — which
+   * we infer from frameHistory progressing past its initial entry. Resets
+   * automatically when the Panel closes (closePanel clears frameHistory).
+   */
+  const chatLabel = frameHistory.length > 1 ? "Current Chat" : "New Chat";
 
   // Re-clear on unmount safety + clear if the parent toggles `hasContentAbove`
   // back to false (which happens on full reset → next loadStory). Keeps the
@@ -82,7 +89,9 @@ export function PanelInput({
         style={{ fontSize: 14, color: "#1d1916" }}
       />
 
-      {/* TODO: align with designer — dropdown content is out-of-scope for Module C/E. */}
+      {/* TODO: align with designer — dropdown content is out-of-scope for Module C/E.
+          Label flips to "Current Chat" once the user has interacted (PRD §x1).
+          We don't animate the swap — the dropdown is intentionally quiet. */}
       <button
         type="button"
         className="flex items-center gap-1 rounded-md font-sans transition-colors hover:bg-cream-2 hover:text-ink"
@@ -92,7 +101,7 @@ export function PanelInput({
           color: "#786d5b",
         }}
       >
-        New Chat
+        {chatLabel}
         <ChevronDown size={14} strokeWidth={1.8} />
       </button>
 

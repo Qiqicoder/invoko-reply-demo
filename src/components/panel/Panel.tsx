@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../../context/AppContext";
-import type { Frame } from "../../stories/types";
+import type { Attachment, Frame } from "../../stories/types";
 import { PanelCalendarConfirm } from "./PanelCalendarConfirm";
 import { PanelDraft } from "./PanelDraft";
 import { PanelInput } from "./PanelInput";
@@ -24,6 +24,12 @@ import { PanelToast } from "./PanelToast";
  *     still tracks the full sequence for state purposes, but the Panel
  *     visualises just `currentFrame` (PRD §13 — Frame transition: 0.25s,
  *     ease easeOut).
+ *   - DRAFT PHASE special-case: when current is `draft` OR `draftUpdate`,
+ *     the AnimatePresence key stays `'draft-card'` across the swap so the
+ *     SAME PanelDraft React element stays mounted. PanelDraft animates the
+ *     body in place (+ shows a transient thinkingLine above the body for
+ *     800ms during a draftUpdate). Conceptually there is only ONE reply
+ *     draft per story; revisions update it in-place.
  *   - Auto-advances for the "passive" frame types — all owned here so the
  *     timers are cancelled cleanly when AnimatePresence swaps frames:
  *       • screenshot  → fires when ScreenshotOverlay sets capturedTarget
@@ -43,6 +49,7 @@ export function Panel() {
     closePanel,
     scriptIndex,
     currentFrame,
+    frameHistory,
     capturedTarget,
     advanceToNext,
   } = useApp();
@@ -129,16 +136,46 @@ export function Panel() {
 
   /* ----------------- Determine what to render in conversation ---------------- */
 
-  // `screenshot`, `toast`, and `userMessage` never render inline.
-  const conversationFrame: Frame | null =
+  /** Draft phase = current is `draft` OR `draftUpdate` (in-place revision). */
+  const isDraftPhase =
+    currentFrame?.type === "draft" || currentFrame?.type === "draftUpdate";
+
+  /**
+   * Merged draft state — walks back from the current frame to find the
+   * most recent `draft` and folds in any subsequent `draftUpdate` frames.
+   * The `thinkingLine` is taken from the LATEST draftUpdate only (so it
+   * shows during exactly one swap, then disappears for good).
+   */
+  const draftState = useMemo(
+    () => (isDraftPhase ? computeDraftState(frameHistory) : null),
+    [isDraftPhase, frameHistory],
+  );
+
+  /**
+   * Other inline frames (not screenshot/toast/userMessage/draft phase).
+   * The draft phase has its own special render path that keeps PanelDraft
+   * mounted across draft → draftUpdate transitions.
+   */
+  const inlineFrame: Frame | null =
     currentFrame &&
+    !isDraftPhase &&
     currentFrame.type !== "screenshot" &&
     currentFrame.type !== "toast" &&
     currentFrame.type !== "userMessage"
       ? currentFrame
       : null;
 
-  const hasContentAbove = conversationFrame !== null;
+  const hasContentAbove = isDraftPhase || inlineFrame !== null;
+
+  /**
+   * AnimatePresence key: draft + draftUpdate share `draft-card` so the
+   * PanelDraft React element stays mounted across the transition (the
+   * card animates its body in-place rather than unmount/remount). Other
+   * frames use the scriptIndex.
+   */
+  const conversationKey = isDraftPhase
+    ? "draft-card"
+    : `frame-${scriptIndex}`;
 
   /** Toast frame to render (if current is a toast). */
   const activeToast =
@@ -197,11 +234,13 @@ export function Panel() {
               }}
             >
               <AnimatePresence mode="wait" initial={false}>
-                {conversationFrame && (
+                {hasContentAbove && (
                   <motion.div
-                    // Key by scriptIndex so each frame swap triggers a
-                    // mount/unmount cycle (driving enter + exit anims).
-                    key={scriptIndex}
+                    // Key strategy: `draft-card` for draft + draftUpdate
+                    // (same React element across in-place revision); per-
+                    // scriptIndex for other frames so each swap triggers
+                    // a mount/unmount cycle (enter + exit anims).
+                    key={conversationKey}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -211,11 +250,21 @@ export function Panel() {
                       overflowY: "auto",
                     }}
                   >
-                    <FrameRouter
-                      frame={conversationFrame}
-                      onSelect={handleSelect}
-                      onAdvance={handleAdvance}
-                    />
+                    {isDraftPhase && draftState ? (
+                      <PanelDraft
+                        body={draftState.body}
+                        attachment={draftState.attachment}
+                        thinkingLine={draftState.thinkingLine}
+                        isActive
+                        onSend={handleAdvance}
+                      />
+                    ) : inlineFrame ? (
+                      <FrameRouter
+                        frame={inlineFrame}
+                        onSelect={handleSelect}
+                        onAdvance={handleAdvance}
+                      />
+                    ) : null}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -263,7 +312,14 @@ function FrameRouter({
     case "screenshot":
     case "toast":
     case "userMessage":
-      // Handled outside the inline-render path (or intentionally hidden).
+    case "draft":
+    case "draftUpdate":
+      // Handled outside the inline-render path:
+      //   - screenshot   → Module D overlay
+      //   - toast        → bottom-center sibling
+      //   - userMessage  → intentionally hidden (auto-skip)
+      //   - draft / draftUpdate → special path in Panel that keeps the
+      //     same PanelDraft mounted for in-place revision
       return null;
     case "quickActions":
       return (
@@ -308,8 +364,6 @@ function FrameRouter({
           {frame.prompt}
         </div>
       );
-    case "draft":
-      return <PanelDraft frame={frame} isActive onSend={onAdvance} />;
     case "calendarConfirm":
       return (
         <PanelCalendarConfirm
@@ -320,6 +374,55 @@ function FrameRouter({
         />
       );
   }
+}
+
+/* --------------------------------------------------------------------------- *
+ * computeDraftState — merge the latest `draft` frame in history with any
+ * subsequent `draftUpdate` frames into a single rendered state.
+ *
+ * Walks back from history's tail looking for the most recent `draft`, with
+ * only `draftUpdate` frames allowed between it and the tail. The merged
+ * body/attachment reflects every update applied in order; `thinkingLine`
+ * comes from the LATEST draftUpdate iff it's the current frame — meaning
+ * the transient "Got it — adjusting tone…" hint shows during exactly one
+ * swap and goes away after PanelDraft's 800ms timer.
+ * --------------------------------------------------------------------------- */
+function computeDraftState(history: Frame[]): {
+  body: string;
+  attachment?: Attachment;
+  thinkingLine?: string;
+} | null {
+  let draftIdx = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const f = history[i];
+    if (f.type === "draft") {
+      draftIdx = i;
+      break;
+    }
+    if (f.type !== "draftUpdate") {
+      // Any other frame in the way means we're no longer in a draft phase.
+      return null;
+    }
+  }
+  if (draftIdx === -1) return null;
+
+  const initial = history[draftIdx];
+  if (initial.type !== "draft") return null;
+
+  let body = initial.body;
+  let attachment: Attachment | undefined = initial.attachment;
+  let thinkingLine: string | undefined;
+
+  for (let i = draftIdx + 1; i < history.length; i++) {
+    const f = history[i];
+    if (f.type !== "draftUpdate") return null;
+    body = f.newBody;
+    if (f.newAttachment) attachment = f.newAttachment;
+    // Only the last update's thinkingLine matters (and only if it's the tail).
+    thinkingLine = i === history.length - 1 ? f.thinkingLine : undefined;
+  }
+
+  return { body, attachment, thinkingLine };
 }
 
 /* ------------------------- Voice hint (spec §5) ------------------------- */

@@ -9,17 +9,17 @@ import type { Frame } from "./types";
  * loads this script + sets `currentStory = 1` so the Gmail window with
  * Sarah's email is visible (gives the screenshot something to snap to).
  *
- * Flow (each frame REPLACES the previous one — Panel renders only the
- * current frame, no stacked conversation):
+ * Flow (each non-draft frame REPLACES the previous one with a cross-fade.
+ * The draft card persists across draft → draftUpdate; PanelDraft animates
+ * its body in place):
  *   1. screenshot      — drag Sarah's email
  *   2. quickActions    — three cards, "Reply" recommended
  *   3. thinking        — three staggered lines
  *   4. options         — three options, "Option C" recommended
- *   5. draft v1        — body with one [mem: …] highlight
- *   6. thinking (regen) — fires whether the user clicks Send on v1 or
- *                         types feedback into the input bar
- *   7. draft v2        — regenerated draft incorporating the feedback
- *   8. toast           — confirmation, auto-dismisses after 5s
+ *   5. draft (v1)      — body with one [mem: …] highlight
+ *   6. draftUpdate     — same card; body smoothly swaps to v2 with a
+ *                        transient "Got it — adjusting tone…" line above
+ *   7. toast           — confirmation, auto-dismisses after 5s
  */
 export const TEST_STORY: Frame[] = [
   { type: "screenshot" },
@@ -55,18 +55,12 @@ export const TEST_STORY: Frame[] = [
     attachment: { name: "Test.pdf", type: "pdf" },
   },
   {
-    type: "thinking",
-    lines: [
-      "Got your feedback.",
-      "Regenerating with a warmer tone…",
-    ],
-  },
-  {
-    type: "draft",
-    body:
+    type: "draftUpdate",
+    thinkingLine: "Got it — adjusting tone and rewriting.",
+    newBody:
       "Hi! Quick update — wanted to share a tighter version using your " +
       "[mem: warm tone] preference. Let me know what you think.",
-    attachment: { name: "Test.pdf", type: "pdf" },
+    newAttachment: { name: "Test.pdf", type: "pdf" },
   },
   {
     type: "toast",

@@ -52,6 +52,18 @@ export type Frame =
   | { type: "userMessage"; text: string }
   | { type: "draft"; body: string; attachment?: Attachment }
   | {
+      /**
+       * In-place revision of the most recent `draft` frame. The Panel keeps
+       * the existing draft card mounted; PanelDraft animates its body text
+       * to `newBody` and (optionally) shows a transient `thinkingLine` above
+       * the body for ~800ms before swapping. The Send button stays.
+       */
+      type: "draftUpdate";
+      newBody: string;
+      newAttachment?: Attachment;
+      thinkingLine?: string;
+    }
+  | {
       type: "calendarConfirm";
       title: string;
       time: string;
