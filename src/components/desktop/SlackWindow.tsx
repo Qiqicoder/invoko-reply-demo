@@ -11,6 +11,8 @@ import {
   Smile,
   Bot,
 } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
+import { useApp, type SentReply } from "../../context/AppContext";
 import { WindowChrome } from "./WindowChrome";
 
 export type SlackView = "nickChannel" | "beiDM";
@@ -224,6 +226,9 @@ function Pencil() {
 /* ---------------------------- Nick channel ---------------------------- */
 
 function NickChannelPane() {
+  const { sentReplies } = useApp();
+  const story2Reply = sentReplies[2];
+
   return (
     <main className="flex h-full flex-1 flex-col bg-white">
       <ChannelHeader
@@ -261,6 +266,8 @@ function NickChannelPane() {
             }}
           />
         </div>
+
+        {story2Reply && <SentSlackReply reply={story2Reply} />}
       </div>
       <Composer placeholder="Message #design" />
     </main>
@@ -270,6 +277,9 @@ function NickChannelPane() {
 /* ------------------------------- Bei DM ------------------------------- */
 
 function BeiDmPane() {
+  const { sentReplies } = useApp();
+  const story3Reply = sentReplies[3];
+
   return (
     <main className="flex h-full flex-1 flex-col bg-white">
       <ChannelHeader title="Bei Chen" meta="Design · Active now" kind="dm" />
@@ -296,6 +306,8 @@ function BeiDmPane() {
             body="sick lmk next time, down to join"
           />
         </div>
+
+        {story3Reply && <SentSlackReply reply={story3Reply} />}
       </div>
       <Composer placeholder="Message Bei Chen" />
     </main>
@@ -437,4 +449,73 @@ function PdfIcon() {
       PDF
     </div>
   );
+}
+
+/* ------------------------ Sent reply (Module G) ------------------------ *
+ * Mirrors GmailWindow's sentReplies pattern: after Send → toast, the
+ * merged draft is snapshotted in AppContext and rendered below the
+ * thread anchor message. Slack uses a circular "Z" avatar (cream on
+ * terracotta) to match the demo user's identity.
+ * --------------------------------------------------------------------- */
+
+function SentSlackReply({ reply }: { reply: SentReply }) {
+  return (
+    <div className="group mt-3 flex items-start gap-3 rounded px-2 py-1">
+      <div
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-sans text-[13px] font-semibold"
+        style={{ background: "#9c4a2a", color: "#faf7ef" }}
+        aria-label="You (Ziying) avatar"
+      >
+        Z
+      </div>
+      <div className="flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="font-sans text-[14px] font-semibold text-ink">
+            You
+          </span>
+          <span className="text-[11px] text-ink-3">{reply.sentAt}</span>
+        </div>
+        <div className="mt-0.5 font-sans text-[14px] leading-[1.55] text-ink-2">
+          {renderSentBody(reply.body)}
+        </div>
+        {reply.attachment && (
+          <div
+            className="mt-2 flex max-w-[360px] items-center gap-3 rounded-md border border-ink-4/30 bg-cream/30 px-3 py-2"
+          >
+            {reply.attachment.type === "zoom" ? (
+              <div
+                className="flex h-9 w-9 items-center justify-center rounded-md text-[10px] font-bold text-white"
+                style={{ background: "#9c4a2a" }}
+              >
+                ZOOM
+              </div>
+            ) : (
+              <PdfIcon />
+            )}
+            <div className="flex-1 leading-tight">
+              <div className="text-[13px] font-medium text-ink">
+                {reply.attachment.name}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Strip `[mem: …]` to plain text for the sent message bubble. */
+function renderSentBody(body: string): ReactNode {
+  const stripped = body.replace(/\[mem:\s*([^\]]+)\]/g, "$1");
+  const paragraphs = stripped.split(/\n\n+/).map((p) => p.trim());
+  if (paragraphs.length <= 1) {
+    return <p className="m-0">{stripped.trim()}</p>;
+  }
+  return paragraphs.map((p, i) => (
+    <Fragment key={i}>
+      <p className="m-0" style={{ marginTop: i === 0 ? 0 : 8 }}>
+        {p}
+      </p>
+    </Fragment>
+  ));
 }
