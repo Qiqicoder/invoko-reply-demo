@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Invoko design tokens (PRD §2.2)
+   Exposed both as CSS variables (for arbitrary use) and as Tailwind theme
+   tokens (so utilities like `bg-cream`, `text-ink-2`, `text-accent` work).
+   --------------------------------------------------------------------------- */
+@theme {
+  /* Background */
+  --color-cream: #f5efe4;
+  --color-cream-2: #ede5d4;
+  --color-paper: #faf7ef;
+
+  /* Ink (text) */
+  --color-ink: #1d1916;
+  --color-ink-2: #4d4438;
+  --color-ink-3: #786d5b;
+  --color-ink-4: #a89c84;
+
+  /* Accent — terracotta */
+  --color-accent: #9c4a2a;
+  --color-accent-faint: #f1e3df;
+  --color-accent-deep: #6e2f18;
+
+  /* Status */
+  --color-success: #4b6849;
+  --color-warning: #d97706;
+
+  /* Typography */
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Memory-highlight gradient — referenced by MemoryHighlight component. */
+:root {
+  --memory-gradient: linear-gradient(
+    135deg,
+    #9c4a2a 0%,
+    #c97550 50%,
+    #d4a373 100%
+  );
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-cream);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* Demo is desktop-only (PRD §0.2). Prevent rubber-band scroll on the page. */
+  overflow: hidden;
+}
