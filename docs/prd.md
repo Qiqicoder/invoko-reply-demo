@@ -184,14 +184,14 @@ Mark in code as `// TODO: align with designer` and we'll discuss separately:
 ### Module A — Foundation
 **Goal**: Working dev environment, design tokens applied, fake desktop visible.
 
-- [ ] **A1.** Scaffold Vite + React + TS project
-- [ ] **A2.** Install Tailwind, configure with custom colors from Section 2.2
-- [ ] **A3.** Install Framer Motion, lucide-react
-- [ ] **A4.** Configure Fraunces, Inter Tight, JetBrains Mono via Google Fonts CDN
-- [ ] **A5.** Set up file structure per Section 1.3
-- [ ] **A6.** Create `AppContext` with state: `currentStory: 1 | 2 | 3 | null`, `currentFrame: number`, `panelState: 'idle' | 'screenshotting' | 'thinking' | 'choosing' | 'drafting' | 'editing' | 'sent'`, `replyPageOpen: boolean`
-- [ ] **A7.** Build empty `Desktop.tsx` with a placeholder gradient background (just to confirm rendering works)
-- [ ] **A8.** Add `KeyboardHint` at bottom of screen: *"Press F to summon Invoko"* (using F instead of Fn because Fn doesn't fire keydown events reliably in browsers)
+- [x] **A1.** Scaffold Vite + React + TS project
+- [x] **A2.** Install Tailwind, configure with custom colors from Section 2.2
+- [x] **A3.** Install Framer Motion, lucide-react
+- [x] **A4.** Configure Fraunces, Inter Tight, JetBrains Mono via Google Fonts CDN
+- [x] **A5.** Set up file structure per Section 1.3
+- [x] **A6.** Create `AppContext` with state: `currentStory: 1 | 2 | 3 | null`, `currentFrame: number`, `panelState: 'idle' | 'screenshotting' | 'thinking' | 'choosing' | 'drafting' | 'editing' | 'sent'`, `replyPageOpen: boolean`
+- [x] **A7.** Build empty `Desktop.tsx` with a placeholder gradient background (just to confirm rendering works)
+- [x] **A8.** Add `KeyboardHint` at bottom of screen: *"Press F to summon Invoko"* (using F instead of Fn because Fn doesn't fire keydown events reliably in browsers)
 
 **Acceptance**: `npm run dev` opens to a cream-colored desktop with a small hint at the bottom. No console errors.
 
@@ -200,11 +200,11 @@ Mark in code as `// TODO: align with designer` and we'll discuss separately:
 ### Module B — Fake Desktop & Windows
 **Goal**: Realistic-looking fake macOS desktop with a Slack window and a Gmail window.
 
-- [ ] **B1.** Build `Desktop.tsx`: subtle gradient (cream → slightly deeper cream), macOS-style menubar at top with Apple logo, current time, control center icons
-- [ ] **B2.** Build `SlackWindow.tsx`: a window with traffic light buttons, sidebar with channels/DMs, main chat area. Hardcode two views: `nickChannel` (boss) and `beiDM` (peer). Each view shows mock messages.
-- [ ] **B3.** Build `GmailWindow.tsx`: a window with Gmail-like header, sidebar (Inbox/Sent/etc), email list, one open email (Sarah's). Mock UI only.
-- [ ] **B4.** Build `ScenarioSwitcher.tsx`: a small floating UI in the bottom-right corner with three buttons: *"Story 1 — Investor reply"*, *"Story 2 — Boss assigns task"*, *"Story 3 — Reach out to teammate"*. Clicking switches the active window and resets the story state.
-- [ ] **B5.** Add window-switching logic: Story 1 shows GmailWindow; Story 2 + 3 show SlackWindow (with different views).
+- [x] **B1.** Build `Desktop.tsx`: subtle gradient (cream → slightly deeper cream), macOS-style menubar at top with Apple logo, current time, control center icons
+- [x] **B2.** Build `SlackWindow.tsx`: a window with traffic light buttons, sidebar with channels/DMs, main chat area. Hardcode two views: `nickChannel` (boss) and `beiDM` (peer). Each view shows mock messages.
+- [x] **B3.** Build `GmailWindow.tsx`: a window with Gmail-like header, sidebar (Inbox/Sent/etc), email list, one open email (Sarah's). Mock UI only.
+- [x] **B4.** Build `ScenarioSwitcher.tsx`: a small floating UI in the bottom-right corner with three buttons: *"Story 1 — Investor reply"*, *"Story 2 — Boss assigns task"*, *"Story 3 — Reach out to teammate"*. Clicking switches the active window and resets the story state.
+- [x] **B5.** Add window-switching logic: Story 1 shows GmailWindow; Story 2 + 3 show SlackWindow (with different views).
 
 **Acceptance**: Open the page, click "Story 1" → Gmail window appears with Sarah's email visible. Click "Story 2" → Slack window appears with Nick's channel and his message visible. Click "Story 3" → Slack window switches to Bei's DM.
 
