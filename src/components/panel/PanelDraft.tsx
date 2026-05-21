@@ -368,7 +368,9 @@ function AttachmentChip({ att }: { att: Attachment }) {
           ? "GDOC"
           : att.type === "pptx"
             ? "PPT"
-            : "XLS";
+            : att.type === "xlsx"
+              ? "XLS"
+              : "ZOOM";
 
   return (
     <span

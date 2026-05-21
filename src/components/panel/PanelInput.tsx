@@ -33,7 +33,8 @@ export function PanelInput({
   hasContentAbove?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const { capturedTarget, submitUserInput, frameHistory } = useApp();
+  const { capturedTarget, submitUserInput, frameHistory, currentFrame } =
+    useApp();
   const [value, setValue] = useState("");
 
   /**
@@ -42,6 +43,11 @@ export function PanelInput({
    * automatically when the Panel closes (closePanel clears frameHistory).
    */
   const chatLabel = frameHistory.length > 1 ? "Current Chat" : "New Chat";
+
+  const inputPlaceholder =
+    currentFrame?.type === "input"
+      ? currentFrame.placeholder
+      : "What can I help you with today?";
 
   // Re-clear on unmount safety + clear if the parent toggles `hasContentAbove`
   // back to false (which happens on full reset → next loadStory). Keeps the
@@ -81,7 +87,7 @@ export function PanelInput({
       <input
         ref={inputRef}
         type="text"
-        placeholder="What can I help you with today?"
+        placeholder={inputPlaceholder}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}

@@ -1,6 +1,8 @@
 import { Inbox, Mail, MessageCircle } from "lucide-react";
 import { useApp, type StoryId } from "../../context/AppContext";
 import { STORY_1 } from "../../stories/story1";
+import { STORY_2 } from "../../stories/story2";
+import { STORY_3 } from "../../stories/story3";
 import type { Frame } from "../../stories/types";
 
 /**
@@ -10,8 +12,7 @@ import type { Frame } from "../../stories/types";
  *   - Clicking Story 1 → `startStoryWithFrames(1, STORY_1)` which sets
  *     currentStory, loads the frames, opens the Panel, and drops the user
  *     into screenshot mode in a single batched update.
- *   - Story 2 / 3 still call the legacy `startStory(id)` (no frames yet);
- *     Module G will swap those over.
+ *   - Stories 1–3 call `startStoryWithFrames` with their `STORY_*` scripts.
  *   - After Story 1 completes, `suggestedNextStory` flips to 2; we render
  *     a small "NEXT" badge on the suggested button so the founder always
  *     knows what to click next.
@@ -39,16 +40,14 @@ const SCENARIOS: Scenario[] = [
     title: "Story 2",
     subtitle: "Boss assigns task",
     icon: <Inbox className="h-4 w-4" strokeWidth={1.8} />,
-    // TODO (Module G): swap in STORY_2.
-    frames: null,
+    frames: STORY_2,
   },
   {
     id: 3,
     title: "Story 3",
     subtitle: "Reach out to teammate",
     icon: <MessageCircle className="h-4 w-4" strokeWidth={1.8} />,
-    // TODO (Module G): swap in STORY_3.
-    frames: null,
+    frames: STORY_3,
   },
 ];
 

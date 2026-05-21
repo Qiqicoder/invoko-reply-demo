@@ -11,6 +11,7 @@
  *   - options          : "What should I include?" picker (visual spec §6)
  *   - input            : free-text input prompt (used for Edit / clarifying Q)
  *   - draft            : reply draft card with body + attachment + Send/Edit
+ *   - continuingContext: Story 3 banner (persists through screenshot; PRD §7)
  *   - calendarConfirm  : inline meeting confirmation card
  *   - toast            : bottom-center notification, auto-dismisses
  */
@@ -29,7 +30,13 @@ export interface OptionItem {
   recommended?: boolean;
 }
 
-export type AttachmentType = "pdf" | "docx" | "gdoc" | "pptx" | "xlsx";
+export type AttachmentType =
+  | "pdf"
+  | "docx"
+  | "gdoc"
+  | "pptx"
+  | "xlsx"
+  | "zoom";
 
 export interface Attachment {
   name: string;
@@ -40,6 +47,16 @@ export interface Attachment {
 
 export type Frame =
   | { type: "screenshot" }
+  | {
+      /**
+       * Continuing-context banner (PRD §4.3 + visual spec §7). Shown at the
+       * top of the Panel; auto-advances to the next frame (typically
+       * screenshot) while the banner stays visible via frameHistory.
+       */
+      type: "continuingContext";
+      /** Task name, e.g. "Q2 Roadmap follow-up from Nick". */
+      label: string;
+    }
   | { type: "quickActions"; actions: QuickAction[] }
   | { type: "thinking"; lines: string[] }
   | {

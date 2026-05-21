@@ -1,21 +1,36 @@
 import { useApp } from "../../context/AppContext";
 
 /**
- * Bottom-of-screen hint telling the user how to summon the Reply Panel.
+ * Bottom-of-screen hint (PRD §A8 + §4.3 Frame 8).
  *
- * Per PRD §A8 we use `F` instead of `Fn` because Fn doesn't fire keydown
- * events reliably in browsers. Hidden when the Panel is already open, since
- * the hint would otherwise contradict reality.
+ * Default: Press F to summon Invoko.
+ * After Story 3 completes: Press ⌘R to open the Reply page (Module H).
+ * Hidden while the Panel is open.
  */
-export function KeyboardHint({ text = "Press F to summon Invoko" }: { text?: string }) {
-  const { panelOpen } = useApp();
+export function KeyboardHint() {
+  const { panelOpen, showReplyPageHint } = useApp();
   if (panelOpen) return null;
+
+  if (showReplyPageHint) {
+    return (
+      <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
+        <div className="flex items-center gap-2 rounded-full bg-paper/80 px-4 py-2 text-sm text-ink-3 shadow-sm backdrop-blur">
+          <span className="font-sans">Press</span>
+          <Kbd>⌘</Kbd>
+          <Kbd>R</Kbd>
+          <span className="font-sans">
+            to see what Reply has learned today →
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
       <div className="flex items-center gap-2 rounded-full bg-paper/80 px-4 py-2 text-sm text-ink-3 shadow-sm backdrop-blur">
         <Kbd>F</Kbd>
-        <span className="font-sans">{text.replace(/^Press F\s+/, "")}</span>
+        <span className="font-sans">to summon Invoko</span>
       </div>
     </div>
   );

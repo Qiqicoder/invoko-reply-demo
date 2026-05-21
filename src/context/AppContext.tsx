@@ -34,6 +34,11 @@ import type { Attachment, Frame } from "../stories/types";
  *                        render the sent reply below Sarah's email after
  *                        Story 1 completes. Persists across re-runs until
  *                        the next Send replaces it.
+ *
+ *   --- Module G ---
+ *   addedDocs              – doc ids added by stories (q2roadmap after Story 2)
+ *   showReplyPageHint      – after Story 3, bottom hint switches to ⌘R (Module H)
+ *   continuingBannerDismissed – user closed the Story 3 continuing banner (X)
  * --------------------------------------------------------------------------- */
 
 export type StoryId = 1 | 2 | 3;
@@ -78,6 +83,17 @@ export interface AppState {
    * sent reply" inline below the original message.
    */
   sentReplies: Partial<Record<StoryId, SentReply>>;
+  /** PRD §G6 — docs revealed by story actions. */
+  addedDocs: ReadonlySet<string>;
+  /** PRD §G5 — swap KeyboardHint to ⌘R after Story 3 completes. */
+  showReplyPageHint: boolean;
+  /** User dismissed the continuing-context banner (visual spec §7). */
+  continuingBannerDismissed: boolean;
+  /**
+   * Answer typed on an `input` frame (Story 2). Substituted into the next
+   * draft's `[mem: …]` highlight before render.
+   */
+  clarifyingAnswer: string | null;
 }
 
 /** A single user-sent reply captured at Send time (Module F fix 4). */
@@ -143,6 +159,8 @@ export interface AppContextValue extends AppState {
    * Module E the text is dropped after triggering advance.
    */
   submitUserInput: (text: string) => void;
+  /** Hide the continuing-context banner for the current Panel session. */
+  dismissContinuingBanner: () => void;
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
@@ -167,6 +185,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sentReplies, setSentReplies] = useState<
     Partial<Record<StoryId, SentReply>>
   >({});
+  const [addedDocs, setAddedDocs] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const [showReplyPageHint, setShowReplyPageHint] = useState(false);
+  const [continuingBannerDismissed, setContinuingBannerDismissed] =
+    useState(false);
+  const [clarifyingAnswer, setClarifyingAnswer] = useState<string | null>(
+    null,
+  );
 
   const currentFrame = useMemo<Frame | null>(
     () =>
@@ -202,6 +229,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetPanel = useCallback(() => {
     setPanelState("idle");
     setCapturedTarget(null);
+    setContinuingBannerDismissed(false);
+    setClarifyingAnswer(null);
     resetFrames();
   }, [resetFrames]);
 
@@ -219,6 +248,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPanelOpen(false);
     setPanelState("idle");
     setCapturedTarget(null);
+    setContinuingBannerDismissed(false);
+    setClarifyingAnswer(null);
     resetFrames();
   }, [resetFrames]);
 
@@ -245,6 +276,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFrameHistory([first]);
       setScriptIndex(0);
       setCapturedTarget(null);
+      setContinuingBannerDismissed(false);
+      setClarifyingAnswer(null);
       setPanelState(first.type === "screenshot" ? "screenshotting" : "idle");
       setPanelOpen(true);
     },
@@ -260,8 +293,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFrameHistory([first]);
     setScriptIndex(0);
     setCapturedTarget(null);
+    setContinuingBannerDismissed(false);
+    setClarifyingAnswer(null);
     setPanelState(first.type === "screenshot" ? "screenshotting" : "idle");
     setPanelOpen(true);
+  }, []);
+
+  const dismissContinuingBanner = useCallback(() => {
+    setContinuingBannerDismissed(true);
   }, []);
 
   const advanceFrame = useCallback((next: Frame) => {
@@ -300,8 +339,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
               return next;
             });
           }
-          // Story 2 / 3 side effects (docs, calendar, etc.) land here in
-          // Module G — keeping the dispatch shape consistent.
+          if (justFinished === 2) {
+            setAddedDocs((prev) => {
+              if (prev.has("q2roadmap")) return prev;
+              const next = new Set(prev);
+              next.add("q2roadmap");
+              return next;
+            });
+          }
+          if (justFinished === 3) {
+            setShowReplyPageHint(true);
+          }
         }
       });
       return;
@@ -315,7 +363,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // inline. Done inside the updater so we observe the pre-append
       // history without taking `frameHistory` as a callback dep.
       if (next.type === "toast" && currentStory != null) {
-        const merged = mergeDraftFromHistory(prev);
+        const merged = mergeDraftFromHistory(prev, clarifyingAnswer);
         if (merged) {
           setSentReplies((reps) => ({
             ...reps,
@@ -336,19 +384,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         curr === "screenshotting" ? "idle" : curr,
       );
     }
-  }, [storyFrames, scriptIndex, currentStory]);
+  }, [storyFrames, scriptIndex, currentStory, clarifyingAnswer]);
 
   const submitUserInput = useCallback(
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      // Module E: text is consumed; no user-message bubble is rendered.
-      // Advance to the next scripted frame (typically a thinking/draft
-      // regen). Module F will instead route `trimmed` into the regen
-      // prompt before advancing.
+      const frame = frameHistory[frameHistory.length - 1] ?? null;
+      if (frame?.type === "input") {
+        setClarifyingAnswer(trimmed);
+      }
       advanceToNext();
     },
-    [advanceToNext],
+    [advanceToNext, frameHistory],
   );
 
   const value = useMemo<AppContextValue>(
@@ -366,6 +414,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       completedStories,
       suggestedNextStory,
       sentReplies,
+      addedDocs,
+      showReplyPageHint,
+      continuingBannerDismissed,
+      clarifyingAnswer,
       setCurrentStory,
       setPanelState,
       setPanelOpen,
@@ -381,6 +433,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       advanceFrame,
       advanceToNext,
       submitUserInput,
+      dismissContinuingBanner,
     }),
     [
       currentStory,
@@ -396,6 +449,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       completedStories,
       suggestedNextStory,
       sentReplies,
+      addedDocs,
+      showReplyPageHint,
+      continuingBannerDismissed,
+      clarifyingAnswer,
       resetPanel,
       resetFrames,
       openPanel,
@@ -406,6 +463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       advanceFrame,
       advanceToNext,
       submitUserInput,
+      dismissContinuingBanner,
     ],
   );
 
@@ -429,7 +487,18 @@ export function useApp(): AppContextValue {
  * rather than sharing it — they live on opposite sides of the data/view
  * boundary and the duplication is tiny.
  * --------------------------------------------------------------------------- */
-function mergeDraftFromHistory(history: Frame[]): {
+function substituteClarifyingAnswer(
+  body: string,
+  answer: string | null,
+): string {
+  if (!answer) return body;
+  return body.replace(/\[mem:\s*([^\]]+)\]/g, `[mem: ${answer}]`);
+}
+
+function mergeDraftFromHistory(
+  history: Frame[],
+  clarifyingAnswer: string | null,
+): {
   body: string;
   attachment?: Attachment;
 } | null {
@@ -455,5 +524,8 @@ function mergeDraftFromHistory(history: Frame[]): {
     body = f.newBody;
     if (f.newAttachment) attachment = f.newAttachment;
   }
-  return { body, attachment };
+  return {
+    body: substituteClarifyingAnswer(body, clarifyingAnswer),
+    attachment,
+  };
 }

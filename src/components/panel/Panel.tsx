@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../../context/AppContext";
 import type { Attachment, Frame } from "../../stories/types";
 import { PanelCalendarConfirm } from "./PanelCalendarConfirm";
+import { PanelContinuingBanner } from "./PanelContinuingBanner";
 import { PanelDraft } from "./PanelDraft";
 import { PanelInput } from "./PanelInput";
 import { PanelMessage, thinkingFrameDurationMs } from "./PanelMessage";
@@ -52,6 +53,9 @@ export function Panel() {
     frameHistory,
     capturedTarget,
     advanceToNext,
+    continuingBannerDismissed,
+    dismissContinuingBanner,
+    clarifyingAnswer,
   } = useApp();
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -124,6 +128,14 @@ export function Panel() {
     return () => clearTimeout(t);
   }, [panelOpen, currentFrame, advanceToNext]);
 
+  /* ---- Auto-skip: continuingContext → next frame (banner stays in history) */
+  useEffect(() => {
+    if (!panelOpen) return;
+    if (currentFrame?.type !== "continuingContext") return;
+    const t = setTimeout(() => advanceToNext(), 0);
+    return () => clearTimeout(t);
+  }, [panelOpen, currentFrame, advanceToNext]);
+
   /* --------- Auto-skip: userMessage frame (kept hidden per spec) ---------
    * User-message bubbles are intentionally suppressed; the typed text is
    * consumed by submitUserInput. If a story script does land on a
@@ -148,8 +160,19 @@ export function Panel() {
    * shows during exactly one swap, then disappears for good).
    */
   const draftState = useMemo(
-    () => (isDraftPhase ? computeDraftState(frameHistory) : null),
-    [isDraftPhase, frameHistory],
+    () =>
+      isDraftPhase
+        ? computeDraftState(frameHistory, clarifyingAnswer)
+        : null,
+    [isDraftPhase, frameHistory, clarifyingAnswer],
+  );
+
+  const continuingLabel = useMemo(
+    () =>
+      continuingBannerDismissed
+        ? null
+        : getContinuingLabelFromHistory(frameHistory),
+    [frameHistory, continuingBannerDismissed],
   );
 
   /**
@@ -162,7 +185,8 @@ export function Panel() {
     !isDraftPhase &&
     currentFrame.type !== "screenshot" &&
     currentFrame.type !== "toast" &&
-    currentFrame.type !== "userMessage"
+    currentFrame.type !== "userMessage" &&
+    currentFrame.type !== "continuingContext"
       ? currentFrame
       : null;
 
@@ -234,6 +258,12 @@ export function Panel() {
                   "0 4px 24px rgba(29, 25, 22, 0.08), 0 1px 3px rgba(29, 25, 22, 0.04)",
               }}
             >
+              {continuingLabel && (
+                <PanelContinuingBanner
+                  label={continuingLabel}
+                  onDismiss={dismissContinuingBanner}
+                />
+              )}
               <AnimatePresence mode="wait" initial={false}>
                 {hasContentAbove && (
                   <motion.div
@@ -313,6 +343,7 @@ function FrameRouter({
     case "screenshot":
     case "toast":
     case "userMessage":
+    case "continuingContext":
     case "draft":
     case "draftUpdate":
       // Handled outside the inline-render path:
@@ -388,7 +419,23 @@ function FrameRouter({
  * transient reasoning lines show during exactly one swap and disappear
  * for good after PanelDraft's fade-out (Module F fix 2).
  * --------------------------------------------------------------------------- */
-function computeDraftState(history: Frame[]): {
+function getContinuingLabelFromHistory(history: Frame[]): string | null {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const f = history[i];
+    if (f.type === "continuingContext") return f.label;
+  }
+  return null;
+}
+
+function applyClarifyingAnswer(body: string, answer: string | null): string {
+  if (!answer) return body;
+  return body.replace(/\[mem:\s*([^\]]+)\]/g, `[mem: ${answer}]`);
+}
+
+function computeDraftState(
+  history: Frame[],
+  clarifyingAnswer: string | null,
+): {
   body: string;
   attachment?: Attachment;
   thinkingLines?: string[];
@@ -424,7 +471,11 @@ function computeDraftState(history: Frame[]): {
       i === history.length - 1 ? f.thinkingLines : undefined;
   }
 
-  return { body, attachment, thinkingLines };
+  return {
+    body: applyClarifyingAnswer(body, clarifyingAnswer),
+    attachment,
+    thinkingLines,
+  };
 }
 
 /* ------------------------- Voice hint (spec §5) ------------------------- */
