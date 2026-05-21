@@ -245,15 +245,15 @@ Mark in code as `// TODO: align with designer` and we'll discuss separately:
 ### Module E — Panel Conversation Engine
 **Goal**: The framework for showing AI messages, options, drafts, edits. Driven by story scripts.
 
-- [ ] **E1.** Build `PanelMessage.tsx`: renders either a "thinking step" (mono dot-prefix line, fades in), an AI message (sans serif body text), or a user message (right-aligned, bubble style).
-- [ ] **E2.** Build `PanelOptions.tsx`: renders a list of choice options (○ Label format), with one marked ✓ recommended. Clickable. Returns selected value to parent.
-- [ ] **E3.** Build `PanelDraft.tsx`: renders the AI's generated reply draft. Includes:
+- [x] **E1.** Build `PanelMessage.tsx`: renders either a "thinking step" (mono dot-prefix line, fades in), an AI message (sans serif body text), or a user message (right-aligned, bubble style).
+- [x] **E2.** Build `PanelOptions.tsx`: renders a list of choice options (○ Label format), with one marked ✓ recommended. Clickable. Returns selected value to parent.
+- [x] **E3.** Build `PanelDraft.tsx`: renders the AI's generated reply draft. Includes:
   - Body text with memory-pulled fields wrapped in `<MemoryHighlight>`
   - Optional attached file row at bottom (📎 Pitch Deck v3.pdf)
   - Two action buttons: **Send** (terracotta solid) and **Edit** (ghost outline)
-- [ ] **E4.** Build `MemoryHighlight.tsx`: renders text with the rainbow/gradient styling. Bracket-syntax in mock data: `[mem: product designer focused on AI tools]` → gets rendered as gradient text with hover tooltip "Pulled from your memory".
-- [ ] **E5.** Build `PanelToast.tsx`: a small notification that appears at bottom-center of screen, fades in then auto-dismisses after 3 seconds. Multi-line capable.
-- [ ] **E6.** Wire all of these to be **frame-driven**: the current story file defines an array of frames; the Panel renders the current frame's content. Advance frames on user action (option click, Send click, etc.).
+- [x] **E4.** Build `MemoryHighlight.tsx`: renders text with the rainbow/gradient styling. Bracket-syntax in mock data: `[mem: product designer focused on AI tools]` → gets rendered as gradient text with hover tooltip "Pulled from your memory".
+- [x] **E5.** Build `PanelToast.tsx`: a small notification that appears at bottom-center of screen, fades in then auto-dismisses after 3 seconds. Multi-line capable.
+- [x] **E6.** Wire all of these to be **frame-driven**: the current story file defines an array of frames; the Panel renders the current frame's content. Advance frames on user action (option click, Send click, etc.).
 
 **Acceptance**: Build a test story with 3 frames: an AI thinking step, an option choice, and a draft. Click through → see each frame render correctly. The MemoryHighlight gradient text should be visibly different from regular text.
 

@@ -1,5 +1,6 @@
-import { Inbox, Mail, MessageCircle } from "lucide-react";
+import { Beaker, Inbox, Mail, MessageCircle } from "lucide-react";
 import { useApp, type StoryId } from "../../context/AppContext";
+import { TEST_STORY } from "../../stories/_test";
 
 /**
  * Floating scenario switcher (PRD §B4) — bottom-right corner.
@@ -42,12 +43,20 @@ const SCENARIOS: Scenario[] = [
 ];
 
 export function ScenarioSwitcher() {
-  const { currentStory, startStory } = useApp();
+  const { currentStory, startStory, setCurrentStory, loadStory } = useApp();
 
   function pick(id: StoryId) {
-    // PRD §D5: clicking a story auto-opens the Panel into screenshot mode.
-    // Re-clicking the active story re-arms screenshot for replay.
+    // PRD §D5 (revised): clicking a story sets context + closes the Panel.
+    // User presses F to summon Panel into screenshot mode.
     startStory(id);
+  }
+
+  function pickTest() {
+    // Module E temporary: use Story 1's Gmail backdrop so the screenshot
+    // frame has something (Sarah's email) to snap to, then load the
+    // synthetic TEST_STORY frames directly into the engine.
+    setCurrentStory(1);
+    loadStory(TEST_STORY);
   }
 
   return (
@@ -105,6 +114,29 @@ export function ScenarioSwitcher() {
           </button>
         );
       })}
+
+      {/* Temporary Module E test button — remove once Module F ships. */}
+      <button
+        type="button"
+        onClick={pickTest}
+        className="mt-1 flex items-center gap-3 rounded-xl border border-dashed px-3 py-2 text-left transition hover:bg-cream"
+        style={{
+          borderColor: "rgba(156,74,42,0.45)",
+          background: "rgba(156,74,42,0.05)",
+        }}
+      >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cream-2 text-ink-2">
+          <Beaker className="h-4 w-4" strokeWidth={1.8} />
+        </span>
+        <span className="flex-1 leading-tight">
+          <span className="block font-mono text-[10px] uppercase tracking-wider text-ink-3">
+            Module E
+          </span>
+          <span className="block font-sans text-[13px] font-medium text-ink">
+            Test all frames
+          </span>
+        </span>
+      </button>
     </div>
   );
 }

@@ -49,6 +49,15 @@ body,
   margin: 0;
 }
 
+/* Suppress native text selection app-wide while a screenshot drag is in
+   progress. Toggled by adding `screenshot-mode-active` to the App root.
+   user-select inherits, so nothing else needs the class. */
+.screenshot-mode-active,
+.screenshot-mode-active * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 body {
   font-family: var(--font-sans);
   color: var(--color-ink);

@@ -14,25 +14,43 @@ import { AppProvider, useApp } from "./context/AppContext";
  * Layout layers (bottom → top):
  *   1. Desktop (background gradient + macOS menubar)
  *   2. ActiveWindow (Gmail/Slack — depends on currentStory)
- *   3. KeyboardHint (bottom hint)
- *   4. ScenarioSwitcher (floating bottom-right)
- *
- * Module C+ will mount the Panel, ScreenshotOverlay, Toast, and ReplyPage
- * overlay as additional layers above these.
+ *   3. ScreenshotOverlay (only while screenshot mode is active)
+ *   4. Panel (z-40)
+ *   5. KeyboardHint (bottom hint, hidden while Panel is open)
+ *   6. ScenarioSwitcher (floating bottom-right, z-50)
  */
 export default function App() {
   return (
     <AppProvider>
-      <div className="relative h-screen w-screen">
-        <Desktop>
-          <ActiveWindow />
-        </Desktop>
-        <ScreenshotOverlayMount />
-        <Panel />
-        <KeyboardHint />
-        <ScenarioSwitcher />
-      </div>
+      <AppShell />
     </AppProvider>
+  );
+}
+
+/**
+ * Inner shell — split out so it can read AppContext and apply
+ * `screenshot-mode-active` to the root when screenshot mode is active.
+ * The CSS class disables native text selection app-wide so dragging on
+ * desktop content doesn't accidentally highlight email/message text.
+ */
+function AppShell() {
+  const { panelOpen, panelState } = useApp();
+  const screenshotting = panelOpen && panelState === "screenshotting";
+
+  return (
+    <div
+      className={`relative h-screen w-screen ${
+        screenshotting ? "screenshot-mode-active" : ""
+      }`}
+    >
+      <Desktop>
+        <ActiveWindow />
+      </Desktop>
+      <ScreenshotOverlayMount />
+      <Panel />
+      <KeyboardHint />
+      <ScenarioSwitcher />
+    </div>
   );
 }
 

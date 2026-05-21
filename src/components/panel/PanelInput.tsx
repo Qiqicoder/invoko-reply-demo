@@ -1,22 +1,31 @@
 import { ArrowUp, ChevronDown } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { InvokoLogo } from "./InvokoLogo";
 import { ScreenshotThumbnail } from "./ScreenshotThumbnail";
 
 /**
- * Bottom input bar inside the Panel (PRD §C2 + visual spec §4).
+ * Bottom input bar inside the Panel (PRD §C2 + visual spec §4 +
+ * Module E fix 2).
  *
  * Layout (left → right):
- *   [InvokoLogo]  [text input fills space]  [New Chat ⌄]  [Send ↑]
+ *   [InvokoLogo]  [thumbnail (optional)]  [text input fills space]
+ *   [New Chat ⌄]  [Send ↑]
  *
- * Module C is the shell only — typing and Send don't do anything yet.
- * Module D/E/F will wire submission to the story-frame engine.
+ * Behavior (fix 2 + 4):
+ *   - Input field is ALWAYS editable, regardless of which conversation
+ *     frame is active. Pointer events / focus are uninhibited.
+ *   - Pressing Enter (no shift) submits the typed text.
+ *   - Clicking the Send button also submits.
+ *   - Submitting calls `submitUserInput(text)` which either substitutes
+ *     into a scripted `userMessage` slot or live-inserts a user bubble
+ *     (engine details live in AppContext).
+ *   - Empty / whitespace-only submissions are ignored.
+ *   - After submit, the field clears.
  *
  * Props:
- *   hasContentAbove – when the Panel has content above the input bar (Quick
- *     Actions, conversation, etc.), a 1px top divider is drawn per spec §4.
- *     In Module C idle state we pass false (no divider).
+ *   hasContentAbove – when the Panel has content above the input bar a 1px
+ *     top divider is drawn per spec §4.
  */
 export function PanelInput({
   hasContentAbove = false,
@@ -24,7 +33,29 @@ export function PanelInput({
   hasContentAbove?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const { capturedTarget } = useApp();
+  const { capturedTarget, submitUserInput } = useApp();
+  const [value, setValue] = useState("");
+
+  // Re-clear on unmount safety + clear if the parent toggles `hasContentAbove`
+  // back to false (which happens on full reset → next loadStory). Keeps the
+  // field truly fresh between demo runs.
+  useEffect(() => {
+    return () => setValue("");
+  }, []);
+
+  function handleSubmit() {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setValue("");
+    submitUserInput(trimmed);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  }
 
   return (
     <div
@@ -44,11 +75,14 @@ export function PanelInput({
         ref={inputRef}
         type="text"
         placeholder="What can I help you with today?"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKeyDown}
         className="flex-1 bg-transparent font-sans outline-none placeholder:text-ink-4"
         style={{ fontSize: 14, color: "#1d1916" }}
       />
 
-      {/* TODO: align with designer — dropdown content is out-of-scope for Module C. */}
+      {/* TODO: align with designer — dropdown content is out-of-scope for Module C/E. */}
       <button
         type="button"
         className="flex items-center gap-1 rounded-md font-sans transition-colors hover:bg-cream-2 hover:text-ink"
@@ -65,7 +99,9 @@ export function PanelInput({
       <button
         type="button"
         aria-label="Send"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent transition-colors hover:bg-accent-deep"
+        onClick={handleSubmit}
+        disabled={value.trim().length === 0}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent transition-colors hover:bg-accent-deep disabled:cursor-default disabled:opacity-50 disabled:hover:bg-accent"
       >
         <ArrowUp size={16} className="text-white" strokeWidth={2.4} />
       </button>

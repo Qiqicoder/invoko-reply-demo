@@ -6,20 +6,25 @@ import { playShutterSound } from "../../lib/audio";
 /**
  * Screenshot drag overlay (PRD §D1–D6 + visual spec §2).
  *
- * Renders three visual layers on top of the desktop (but below the Panel):
- *   - A semi-transparent dim backdrop (z-31)
+ * Layers on top of the desktop while in screenshot mode (no dim backdrop —
+ * the desktop stays at full brightness):
+ *   - Transparent capture layer at z-30 that intercepts mousedown so the
+ *     browser doesn't initiate native text selection on the underlying
+ *     desktop content. `cursor: crosshair` here is the affordance.
  *   - The live drag rectangle while the user is dragging (z-35)
  *   - A floating "Drag to take a screenshot" tooltip following the cursor
  *     with smooth spring lag (z-50, above the Panel per spec)
+ *   - White flash overlay during the snap (z-60)
+ *
+ * The capture layer is z-30 — below the Panel (z-40) and ScenarioSwitcher
+ * (z-50), so those remain interactive. mousemove + mouseup still listen on
+ * `window` so we never lose drag state when the cursor passes over Panel
+ * or Switcher mid-drag.
  *
  * On mouseup the overlay finds the nearest `[data-mock-target]` element to
  * the drag's center, snaps the rect to that element's bounds, plays the
  * shutter sound, runs a 200ms white flash, then dispatches the captured
  * target to AppContext and exits screenshot mode (panelState='idle').
- *
- * The overlay is intentionally short-lived — it mounts only while
- * `panelOpen && panelState === 'screenshotting'` and unmounts as soon as
- * capture completes or the user closes the Panel.
  */
 
 type Phase = "awaiting" | "dragging" | "flashing";
@@ -40,6 +45,19 @@ export function ScreenshotOverlay() {
   // re-binding on every state change.
   const phaseRef = useRef<Phase>("awaiting");
   const rectRef = useRef<DragRect | null>(null);
+  const captureLayerRef = useRef<HTMLDivElement | null>(null);
+
+  // Safety net (in addition to mousedown preventDefault and the
+  // app-wide `user-select: none` CSS class): swallow the native
+  // `selectstart` event on the capture layer. Wired via a ref because
+  // React's HTMLAttributes type doesn't expose `onSelectStart` for div.
+  useEffect(() => {
+    const node = captureLayerRef.current;
+    if (!node) return;
+    const handler = (e: Event) => e.preventDefault();
+    node.addEventListener("selectstart", handler);
+    return () => node.removeEventListener("selectstart", handler);
+  }, []);
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
@@ -66,14 +84,27 @@ export function ScreenshotOverlay() {
 
   /* ---------------------------- Mouse logic ---------------------------- */
 
-  useEffect(() => {
-    function isOnNoDragArea(target: EventTarget | null) {
-      const el = target as HTMLElement | null;
-      return Boolean(
-        el?.closest?.("[data-invoko-panel], [data-invoko-no-drag]"),
-      );
-    }
+  // Drag-start handler now lives as a React event handler on the capture
+  // layer (see render below) so we can call `e.preventDefault()` synchronously
+  // and stop the browser from beginning a text selection. Pulled out of the
+  // window-listener effect for that reason.
+  function handleCaptureMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (phaseRef.current !== "awaiting") return;
+    e.preventDefault(); // suppress native text-selection / drag initiation
 
+    const initial: DragRect = {
+      x1: e.clientX,
+      y1: e.clientY,
+      x2: e.clientX,
+      y2: e.clientY,
+    };
+    rectRef.current = initial;
+    phaseRef.current = "dragging";
+    setRect(initial);
+    setPhase("dragging");
+  }
+
+  useEffect(() => {
     function onMove(e: MouseEvent) {
       // Tooltip follows even during drag — it'll just be hidden visually.
       cursorX.set(e.clientX + 16);
@@ -88,22 +119,6 @@ export function ScreenshotOverlay() {
         rectRef.current = next;
         setRect(next);
       }
-    }
-
-    function onDown(e: MouseEvent) {
-      if (phaseRef.current !== "awaiting") return;
-      if (isOnNoDragArea(e.target)) return;
-
-      const initial: DragRect = {
-        x1: e.clientX,
-        y1: e.clientY,
-        x2: e.clientX,
-        y2: e.clientY,
-      };
-      rectRef.current = initial;
-      phaseRef.current = "dragging";
-      setRect(initial);
-      setPhase("dragging");
     }
 
     function onUp() {
@@ -157,12 +172,13 @@ export function ScreenshotOverlay() {
       }, 420);
     }
 
+    // mousemove + mouseup on window so we still track the drag if the
+    // cursor passes over Panel (z-40) or ScenarioSwitcher (z-50). The
+    // capture layer (z-30) handles mousedown via React's onMouseDown.
     window.addEventListener("mousemove", onMove);
-    window.addEventListener("mousedown", onDown);
     window.addEventListener("mouseup", onUp);
     return () => {
       window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mousedown", onDown);
       window.removeEventListener("mouseup", onUp);
     };
   }, [cursorX, cursorY, setCapturedTarget, setPanelState]);
@@ -173,18 +189,19 @@ export function ScreenshotOverlay() {
 
   return (
     <>
-      {/* Dim backdrop. cursor:crosshair signals the drag affordance. */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.18, ease: "easeOut" }}
+      {/* Transparent capture layer — intercepts mousedown so the browser
+          doesn't start a native text selection on the underlying desktop
+          content. z-30 puts it above the desktop but below the Panel
+          (z-40) and ScenarioSwitcher (z-50). */}
+      <div
+        ref={captureLayerRef}
+        onMouseDown={handleCaptureMouseDown}
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(15, 12, 9, 0.32)",
-          zIndex: 31,
+          background: "transparent",
           cursor: "crosshair",
+          zIndex: 30,
         }}
       />
 
@@ -211,7 +228,6 @@ export function ScreenshotOverlay() {
             border: "2px solid #9c4a2a",
             background: "rgba(156, 74, 42, 0.12)",
             borderRadius: 6,
-            boxShadow: "0 0 0 9999px rgba(15, 12, 9, 0.08)",
           }}
         />
       )}

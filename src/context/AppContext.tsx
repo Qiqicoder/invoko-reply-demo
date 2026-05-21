@@ -6,18 +6,21 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { Frame } from "../stories/types";
 
 /* ---------------------------------------------------------------------------
- * Global app state (PRD §A6).
+ * Global app state (PRD §A6 + Module E engine extensions).
  *
- *   currentStory   – which story is active (1, 2, 3) or null when idle
- *   currentFrame   – index into the active story's frame array
- *   panelState     – high-level Panel lifecycle (drives which sub-UI shows)
- *   panelOpen      – is the Panel currently visible (toggled by F / Esc / etc.)
- *   replyPageOpen  – is the main Reply page overlay visible (Cmd+R)
+ *   currentStory    – which story is active (1, 2, 3) or null when idle
+ *   panelState      – high-level Panel lifecycle (drives which sub-UI shows)
+ *   panelOpen       – is the Panel currently visible (toggled by F / Esc / etc.)
+ *   replyPageOpen   – is the main Reply page overlay visible (Cmd+R)
+ *   capturedTarget  – which `data-mock-target` was just screenshot-captured
  *
- * `panelOpen` is intentionally separate from `panelState`: a Panel can be
- * closed entirely (panelOpen=false) or open in any of the lifecycle states.
+ *   --- Module E (Conversation Engine) ---
+ *   storyFrames     – the full Frame[] for the active story (null when idle)
+ *   frameHistory    – frames the user has progressed through, in order
+ *   currentFrame    – derived: last item of frameHistory (the active frame)
  * --------------------------------------------------------------------------- */
 
 export type StoryId = 1 | 2 | 3;
@@ -33,100 +36,264 @@ export type PanelState =
 
 export interface AppState {
   currentStory: StoryId | null;
-  currentFrame: number;
   panelState: PanelState;
   panelOpen: boolean;
   replyPageOpen: boolean;
-  /** Which `data-mock-target` was just screenshot-captured, or null. */
   capturedTarget: string | null;
+  storyFrames: Frame[] | null;
+  frameHistory: Frame[];
+  /**
+   * Position in `storyFrames`. Independent of frameHistory.length because
+   * live-inserted frames (user messages typed into the input bar) live in
+   * history but don't consume a script slot.
+   */
+  scriptIndex: number;
+  /** Derived from frameHistory: the last item or null. */
+  currentFrame: Frame | null;
 }
 
 export interface AppContextValue extends AppState {
   setCurrentStory: (story: StoryId | null) => void;
-  setCurrentFrame: (frame: number) => void;
   setPanelState: (state: PanelState) => void;
   setPanelOpen: (open: boolean) => void;
   setReplyPageOpen: (open: boolean) => void;
   setCapturedTarget: (target: string | null) => void;
-  /** Reset Panel content state (frame=0, panelState='idle'); leaves visibility alone. */
+
+  /** Reset Panel content state (clears frames + capturedTarget). */
   resetPanel: () => void;
-  /** Open the Panel and reset its content state. Used by F key + Module F auto-open. */
+  /** Clear frameHistory and storyFrames (used by close + story switch). */
+  resetFrames: () => void;
+  /** Open the Panel and reset its content state. Used by F key. */
   openPanel: () => void;
   /** Close the Panel and reset its content state. */
   closePanel: () => void;
-  /** Start a story (PRD §D5): set story id, open Panel, enter screenshot mode. */
+  /** Start a story by id (PRD §D5 revised): sets currentStory, closes Panel. */
   startStory: (story: StoryId) => void;
+
+  /**
+   * Module E — load a Frame[] as the active script. Opens the Panel,
+   * pushes the first frame to history, and adjusts panelState based on
+   * that frame's type (screenshot → 'screenshotting', else 'idle').
+   */
+  loadStory: (frames: Frame[]) => void;
+
+  /** Append a specific Frame to history. (Story scripts use this.) */
+  advanceFrame: (next: Frame) => void;
+
+  /**
+   * Advance to the next frame in `storyFrames` (the most common path —
+   * used by all auto-advancing frames and most user-triggered transitions).
+   * If we've reached the end of the script, closes the Panel.
+   */
+  advanceToNext: () => void;
+
+  /**
+   * Submit free text from the Panel input bar (Module E fix 2 + 4).
+   *
+   *   - If the next scripted frame is a `userMessage`, substitute its
+   *     `.text` with `text` and advance into it.
+   *   - Otherwise, push a `userMessage` to history *without* advancing the
+   *     script (live insert), so the bubble appears in-line; the engine's
+   *     userMessage auto-advance will then move to the next script frame.
+   *
+   * In both cases the resulting `userMessage` lands as currentFrame and
+   * the Panel's auto-advance effect drives the conversation forward.
+   */
+  submitUserInput: (text: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentStory, setCurrentStory] = useState<StoryId | null>(null);
-  const [currentFrame, setCurrentFrame] = useState<number>(0);
   const [panelState, setPanelState] = useState<PanelState>("idle");
   const [panelOpen, setPanelOpen] = useState<boolean>(false);
   const [replyPageOpen, setReplyPageOpen] = useState<boolean>(false);
   const [capturedTarget, setCapturedTarget] = useState<string | null>(null);
 
-  const resetPanel = useCallback(() => {
-    setCurrentFrame(0);
-    setPanelState("idle");
-    setCapturedTarget(null);
+  const [storyFrames, setStoryFrames] = useState<Frame[] | null>(null);
+  const [frameHistory, setFrameHistory] = useState<Frame[]>([]);
+  const [scriptIndex, setScriptIndex] = useState<number>(0);
+
+  const currentFrame = useMemo<Frame | null>(
+    () =>
+      frameHistory.length > 0 ? frameHistory[frameHistory.length - 1] : null,
+    [frameHistory],
+  );
+
+  /* ----------------------- Internal helpers ----------------------- */
+
+  const resetFrames = useCallback(() => {
+    setStoryFrames(null);
+    setFrameHistory([]);
+    setScriptIndex(0);
   }, []);
 
-  const openPanel = useCallback(() => {
-    setCurrentFrame(0);
+  /* -------------------------- Public actions -------------------------- */
+
+  const resetPanel = useCallback(() => {
     setPanelState("idle");
     setCapturedTarget(null);
+    resetFrames();
+  }, [resetFrames]);
+
+  const openPanel = useCallback(() => {
+    // PRD §D5 (revised): with no active story, just plain idle; with a story
+    // selected, F-press enters screenshot mode. (Module F will replace this
+    // with a per-story `loadStory(...)` call from the ScenarioSwitcher.)
+    setCapturedTarget(null);
+    setPanelState(currentStory != null ? "screenshotting" : "idle");
+    resetFrames();
     setPanelOpen(true);
-  }, []);
+  }, [currentStory, resetFrames]);
 
   const closePanel = useCallback(() => {
     setPanelOpen(false);
-    // Per PRD §C6: when Panel is closed and re-opened, reset to idle state.
-    setCurrentFrame(0);
     setPanelState("idle");
     setCapturedTarget(null);
-  }, []);
+    resetFrames();
+  }, [resetFrames]);
 
-  const startStory = useCallback((story: StoryId) => {
-    setCurrentStory(story);
-    setCurrentFrame(0);
+  const startStory = useCallback(
+    (story: StoryId) => {
+      setCurrentStory(story);
+      setCapturedTarget(null);
+      setPanelState("idle");
+      setPanelOpen(false);
+      resetFrames();
+    },
+    [resetFrames],
+  );
+
+  /* --------------------- Module E: frame engine --------------------- */
+
+  const loadStory = useCallback((frames: Frame[]) => {
+    if (frames.length === 0) return;
+    const first = frames[0];
+    setStoryFrames(frames);
+    setFrameHistory([first]);
+    setScriptIndex(0);
     setCapturedTarget(null);
-    setPanelState("screenshotting");
+    setPanelState(first.type === "screenshot" ? "screenshotting" : "idle");
     setPanelOpen(true);
   }, []);
+
+  const advanceFrame = useCallback((next: Frame) => {
+    setFrameHistory((prev) => [...prev, next]);
+    if (next.type === "screenshot") {
+      setPanelState("screenshotting");
+    }
+  }, []);
+
+  const advanceToNext = useCallback(() => {
+    if (!storyFrames) return;
+    const nextIdx = scriptIndex + 1;
+    const next = storyFrames[nextIdx];
+    if (!next) {
+      // End of story — defer panel close so we don't setState during
+      // another component's render.
+      queueMicrotask(() => {
+        setPanelOpen(false);
+        setPanelState("idle");
+      });
+      return;
+    }
+    setScriptIndex(nextIdx);
+    setFrameHistory((prev) => [...prev, next]);
+    if (next.type === "screenshot") {
+      setPanelState("screenshotting");
+    } else {
+      setPanelState((curr) =>
+        curr === "screenshotting" ? "idle" : curr,
+      );
+    }
+  }, [storyFrames, scriptIndex]);
+
+  const submitUserInput = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      // Branch A: the next scripted frame is a userMessage placeholder.
+      // Substitute the user's text into that slot and consume the script
+      // step. (e.g. test story's `userMessage('Make it more concise.')`)
+      if (storyFrames) {
+        const nextIdx = scriptIndex + 1;
+        const next = storyFrames[nextIdx];
+        if (next && next.type === "userMessage") {
+          setScriptIndex(nextIdx);
+          setFrameHistory((prev) => [
+            ...prev,
+            { type: "userMessage", text: trimmed },
+          ]);
+          // Substituted into a userMessage slot → never a screenshot frame;
+          // exit screenshot mode if it somehow was active.
+          setPanelState((curr) =>
+            curr === "screenshotting" ? "idle" : curr,
+          );
+          return;
+        }
+      }
+
+      // Branch B: live insert without consuming a script step. The userMessage
+      // auto-advance effect in Panel.tsx will then move us to the next
+      // scripted frame.
+      setFrameHistory((prev) => [
+        ...prev,
+        { type: "userMessage", text: trimmed },
+      ]);
+      setPanelState((curr) =>
+        curr === "screenshotting" ? "idle" : curr,
+      );
+    },
+    [storyFrames, scriptIndex],
+  );
 
   const value = useMemo<AppContextValue>(
     () => ({
       currentStory,
-      currentFrame,
       panelState,
       panelOpen,
       replyPageOpen,
       capturedTarget,
+      storyFrames,
+      frameHistory,
+      scriptIndex,
+      currentFrame,
       setCurrentStory,
-      setCurrentFrame,
       setPanelState,
       setPanelOpen,
       setReplyPageOpen,
       setCapturedTarget,
       resetPanel,
+      resetFrames,
       openPanel,
       closePanel,
       startStory,
+      loadStory,
+      advanceFrame,
+      advanceToNext,
+      submitUserInput,
     }),
     [
       currentStory,
-      currentFrame,
       panelState,
       panelOpen,
       replyPageOpen,
       capturedTarget,
+      storyFrames,
+      frameHistory,
+      scriptIndex,
+      currentFrame,
       resetPanel,
+      resetFrames,
       openPanel,
       closePanel,
       startStory,
+      loadStory,
+      advanceFrame,
+      advanceToNext,
+      submitUserInput,
     ],
   );
 
