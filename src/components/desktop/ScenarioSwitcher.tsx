@@ -42,17 +42,20 @@ const SCENARIOS: Scenario[] = [
 ];
 
 export function ScenarioSwitcher() {
-  const { currentStory, setCurrentStory, resetPanel } = useApp();
+  const { currentStory, startStory } = useApp();
 
   function pick(id: StoryId) {
-    if (id === currentStory) return;
-    setCurrentStory(id);
-    resetPanel();
+    // PRD §D5: clicking a story auto-opens the Panel into screenshot mode.
+    // Re-clicking the active story re-arms screenshot for replay.
+    startStory(id);
   }
 
   return (
     <div
-      className="absolute bottom-6 right-6 z-20 flex flex-col gap-2 rounded-2xl bg-paper/85 p-3 shadow-[0_18px_40px_-18px_rgba(29,25,22,0.35)] backdrop-blur"
+      // `data-invoko-no-drag` lets ScreenshotOverlay ignore mousedowns that
+      // happen here, so users can still switch stories mid-screenshot.
+      data-invoko-no-drag
+      className="absolute bottom-6 right-6 z-50 flex flex-col gap-2 rounded-2xl bg-paper/85 p-3 shadow-[0_18px_40px_-18px_rgba(29,25,22,0.35)] backdrop-blur"
       style={{ border: "1px solid rgba(29,25,22,0.08)", width: 240 }}
     >
       <div className="px-1 pb-1 font-mono text-[10px] uppercase tracking-wider text-ink-3">

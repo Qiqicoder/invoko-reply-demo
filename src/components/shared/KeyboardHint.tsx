@@ -1,10 +1,16 @@
+import { useApp } from "../../context/AppContext";
+
 /**
  * Bottom-of-screen hint telling the user how to summon the Reply Panel.
  *
  * Per PRD §A8 we use `F` instead of `Fn` because Fn doesn't fire keydown
- * events reliably in browsers.
+ * events reliably in browsers. Hidden when the Panel is already open, since
+ * the hint would otherwise contradict reality.
  */
 export function KeyboardHint({ text = "Press F to summon Invoko" }: { text?: string }) {
+  const { panelOpen } = useApp();
+  if (panelOpen) return null;
+
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
       <div className="flex items-center gap-2 rounded-full bg-paper/80 px-4 py-2 text-sm text-ink-3 shadow-sm backdrop-blur">

@@ -1,7 +1,10 @@
+import { AnimatePresence } from "framer-motion";
 import { Desktop } from "./components/desktop/Desktop";
 import { GmailWindow } from "./components/desktop/GmailWindow";
 import { ScenarioSwitcher } from "./components/desktop/ScenarioSwitcher";
 import { SlackWindow } from "./components/desktop/SlackWindow";
+import { Panel } from "./components/panel/Panel";
+import { ScreenshotOverlay } from "./components/panel/ScreenshotOverlay";
 import { KeyboardHint } from "./components/shared/KeyboardHint";
 import { AppProvider, useApp } from "./context/AppContext";
 
@@ -24,6 +27,8 @@ export default function App() {
         <Desktop>
           <ActiveWindow />
         </Desktop>
+        <ScreenshotOverlayMount />
+        <Panel />
         <KeyboardHint />
         <ScenarioSwitcher />
       </div>
@@ -45,6 +50,18 @@ function ActiveWindow() {
   if (currentStory === 2) return <SlackWindow view="nickChannel" />;
   if (currentStory === 3) return <SlackWindow view="beiDM" />;
   return <EmptyDesktopHint />;
+}
+
+/**
+ * Mount the ScreenshotOverlay only while we're actively in screenshot mode.
+ * Wrapped in AnimatePresence so the dim backdrop can fade in/out.
+ */
+function ScreenshotOverlayMount() {
+  const { panelOpen, panelState } = useApp();
+  const active = panelOpen && panelState === "screenshotting";
+  return (
+    <AnimatePresence>{active && <ScreenshotOverlay />}</AnimatePresence>
+  );
 }
 
 function EmptyDesktopHint() {

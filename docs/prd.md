@@ -213,16 +213,16 @@ Mark in code as `// TODO: align with designer` and we'll discuss separately:
 ### Module C — Reply Panel Shell
 **Goal**: The Panel appears on F key press, with the input bar visible. No content logic yet.
 
-- [ ] **C1.** Build `Panel.tsx`: a fixed-position floating element at top center, hidden by default, appears with spring animation when triggered.
-- [ ] **C2.** Build `PanelInput.tsx`: the bottom input bar. Includes:
+- [x] **C1.** Build `Panel.tsx`: a fixed-position floating element at top center, hidden by default, appears with spring animation when triggered.
+- [x] **C2.** Build `PanelInput.tsx`: the bottom input bar. Includes:
   - Left: small Invoko logo (terracotta starburst, ~24px)
   - Center: input field placeholder *"What can I help you with today?"*
   - Right: *"New Chat ⌄"* dropdown indicator + send button (terracotta square with arrow)
   - Below the bar (small gray text): *"Press F+Space for voice"*
-- [ ] **C3.** Wire keyboard listener: pressing **F** toggles Panel visibility.
-- [ ] **C4.** Add **Esc** key to close Panel.
-- [ ] **C5.** Click outside Panel also closes it.
-- [ ] **C6.** When Panel is closed and re-opened, reset to idle state.
+- [x] **C3.** Wire keyboard listener: pressing **F** toggles Panel visibility.
+- [x] **C4.** Add **Esc** key to close Panel.
+- [x] **C5.** Click outside Panel also closes it.
+- [x] **C6.** When Panel is closed and re-opened, reset to idle state.
 
 **Acceptance**: Press F → Panel slides in from top with spring animation. Press F or Esc or click outside → Panel slides out. The input bar shows correctly with all elements positioned properly.
 
@@ -231,12 +231,12 @@ Mark in code as `// TODO: align with designer` and we'll discuss separately:
 ### Module D — Screenshot Interaction
 **Goal**: When Panel is open, user can drag-to-screenshot. Selection box, flash, sound, thumbnail in input bar.
 
-- [ ] **D1.** Build `ScreenshotOverlay.tsx`: when Panel enters screenshot mode, a semi-transparent dark overlay covers the desktop (but not the Panel). A "Drag to take a screenshot" tooltip follows the cursor.
-- [ ] **D2.** Add drag-to-select rectangle: mousedown starts a rectangle, mousemove resizes it, mouseup completes.
-- [ ] **D3.** On completion: flash the screen white briefly (200ms), play a shutter sound (`/public/sounds/shutter.mp3` — use any free shutter clip).
-- [ ] **D4.** The selected region "captures" — show a small thumbnail of the screenshot in the Panel's input bar (left of the input text area).
-- [ ] **D5.** **Important**: Screenshot mode is auto-triggered when each story starts. User doesn't manually trigger it. The first time the Panel opens during a story, it immediately enters screenshot mode and shows the "Drag" tooltip.
-- [ ] **D6.** **Smart selection**: For demo purposes, the user can drag anywhere — but when they release, the captured region "snaps" to the relevant message in the underlying window (Sarah's email, Nick's message, Bei's DM). This makes the demo feel intelligent.
+- [x] **D1.** Build `ScreenshotOverlay.tsx`: when Panel enters screenshot mode, a semi-transparent dark overlay covers the desktop (but not the Panel). A "Drag to take a screenshot" tooltip follows the cursor.
+- [x] **D2.** Add drag-to-select rectangle: mousedown starts a rectangle, mousemove resizes it, mouseup completes.
+- [x] **D3.** On completion: flash the screen white briefly (200ms), play a shutter sound (`/public/sounds/shutter.mp3` — use any free shutter clip).
+- [x] **D4.** The selected region "captures" — show a small thumbnail of the screenshot in the Panel's input bar (left of the input text area).
+- [x] **D5.** **Important**: Screenshot mode is auto-triggered when each story starts. User doesn't manually trigger it. The first time the Panel opens during a story, it immediately enters screenshot mode and shows the "Drag" tooltip.
+- [x] **D6.** **Smart selection**: For demo purposes, the user can drag anywhere — but when they release, the captured region "snaps" to the relevant message in the underlying window (Sarah's email, Nick's message, Bei's DM). This makes the demo feel intelligent.
 
 **Acceptance**: Trigger Story 1 → Panel opens → overlay appears → drag anywhere → snap to Sarah's email → flash + sound → thumbnail appears in input. The thumbnail should be a tiny rendered preview of the email content.
 
