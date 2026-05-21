@@ -56,6 +56,7 @@ export function Panel() {
     continuingBannerDismissed,
     dismissContinuingBanner,
     clarifyingAnswer,
+    replyPageOpen,
   } = useApp();
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -68,6 +69,9 @@ export function Panel() {
         target?.tagName === "TEXTAREA" ||
         Boolean(target?.isContentEditable);
 
+      if (e.key === "Escape" && replyPageOpen) {
+        return;
+      }
       if (e.key === "Escape" && panelOpen) {
         e.preventDefault();
         closePanel();
@@ -82,7 +86,7 @@ export function Panel() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [panelOpen, openPanel, closePanel]);
+  }, [panelOpen, replyPageOpen, openPanel, closePanel]);
 
   /* ----------------------- Click outside to close ---------------------- */
   useEffect(() => {

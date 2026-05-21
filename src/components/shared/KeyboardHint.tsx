@@ -8,8 +8,8 @@ import { useApp } from "../../context/AppContext";
  * Hidden while the Panel is open.
  */
 export function KeyboardHint() {
-  const { panelOpen, showReplyPageHint } = useApp();
-  if (panelOpen) return null;
+  const { panelOpen, replyPageOpen, showReplyPageHint } = useApp();
+  if (panelOpen || replyPageOpen) return null;
 
   if (showReplyPageHint) {
     return (

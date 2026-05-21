@@ -5,6 +5,7 @@ import { ScenarioSwitcher } from "./components/desktop/ScenarioSwitcher";
 import { SlackWindow } from "./components/desktop/SlackWindow";
 import { Panel } from "./components/panel/Panel";
 import { ScreenshotOverlay } from "./components/panel/ScreenshotOverlay";
+import { ReplyPageOverlay } from "./components/replyPage/ReplyPageOverlay";
 import { KeyboardHint } from "./components/shared/KeyboardHint";
 import { AppProvider, useApp } from "./context/AppContext";
 
@@ -18,6 +19,7 @@ import { AppProvider, useApp } from "./context/AppContext";
  *   4. Panel (z-40)
  *   5. KeyboardHint (bottom hint, hidden while Panel is open)
  *   6. ScenarioSwitcher (floating bottom-right, z-50)
+ *   7. ReplyPageOverlay (⌘R, z-60 — Module H)
  */
 export default function App() {
   return (
@@ -49,6 +51,7 @@ function AppShell() {
       <ScreenshotOverlayMount />
       <Panel />
       <KeyboardHint />
+      <ReplyPageOverlay />
       <ScenarioSwitcher />
     </div>
   );
