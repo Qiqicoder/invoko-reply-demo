@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Frame } from "../stories/types";
+import type { Attachment, Frame } from "../stories/types";
 
 /* ---------------------------------------------------------------------------
  * Global app state (PRD §A6 + Module E engine extensions + Module F state
@@ -29,6 +29,11 @@ import type { Frame } from "../stories/types";
  *                        Reply page reflects them after the user replays.
  *   completedStories   – ids of stories the user has played to the toast.
  *                        Used by ScenarioSwitcher to highlight the next story.
+ *   sentReplies        – per-story snapshot of the final draft when the user
+ *                        hit Send. GmailWindow reads `sentReplies[1]` to
+ *                        render the sent reply below Sarah's email after
+ *                        Story 1 completes. Persists across re-runs until
+ *                        the next Send replaces it.
  * --------------------------------------------------------------------------- */
 
 export type StoryId = 1 | 2 | 3;
@@ -67,6 +72,20 @@ export interface AppState {
    * Derived from completedStories: 1 done → 2; 2 done → 3; 3 done → null.
    */
   suggestedNextStory: StoryId | null;
+  /**
+   * Per-story snapshot of the final reply when the user hit Send. Used by
+   * the backdrop windows (e.g. GmailWindow for Story 1) to show "your
+   * sent reply" inline below the original message.
+   */
+  sentReplies: Partial<Record<StoryId, SentReply>>;
+}
+
+/** A single user-sent reply captured at Send time (Module F fix 4). */
+export interface SentReply {
+  body: string;
+  attachment?: Attachment;
+  /** Display string (we keep this human-readable rather than a Date). */
+  sentAt: string;
 }
 
 export interface AppContextValue extends AppState {
@@ -145,6 +164,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [completedStories, setCompletedStories] = useState<
     ReadonlySet<StoryId>
   >(() => new Set<StoryId>());
+  const [sentReplies, setSentReplies] = useState<
+    Partial<Record<StoryId, SentReply>>
+  >({});
 
   const currentFrame = useMemo<Frame | null>(
     () =>
@@ -285,7 +307,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     setScriptIndex(nextIdx);
-    setFrameHistory((prev) => [...prev, next]);
+    setFrameHistory((prev) => {
+      // Module F fix 4: when the user hits Send on a draft card, the next
+      // frame is the toast. Snapshot the merged draft (initial draft +
+      // all draftUpdate revisions) into sentReplies so the backdrop
+      // window (e.g. GmailWindow for Story 1) can render the sent reply
+      // inline. Done inside the updater so we observe the pre-append
+      // history without taking `frameHistory` as a callback dep.
+      if (next.type === "toast" && currentStory != null) {
+        const merged = mergeDraftFromHistory(prev);
+        if (merged) {
+          setSentReplies((reps) => ({
+            ...reps,
+            [currentStory]: {
+              body: merged.body,
+              attachment: merged.attachment,
+              sentAt: "just now",
+            },
+          }));
+        }
+      }
+      return [...prev, next];
+    });
     if (next.type === "screenshot") {
       setPanelState("screenshotting");
     } else {
@@ -322,6 +365,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addedPeople,
       completedStories,
       suggestedNextStory,
+      sentReplies,
       setCurrentStory,
       setPanelState,
       setPanelOpen,
@@ -351,6 +395,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addedPeople,
       completedStories,
       suggestedNextStory,
+      sentReplies,
       resetPanel,
       resetFrames,
       openPanel,
@@ -373,4 +418,42 @@ export function useApp(): AppContextValue {
     throw new Error("useApp must be used within an <AppProvider>");
   }
   return ctx;
+}
+
+/* --------------------------------------------------------------------------- *
+ * mergeDraftFromHistory — walks back from history's tail to fold the most
+ * recent `draft` plus any trailing `draftUpdate` frames into a single body.
+ * Used at Send-time to snapshot what was sent (Module F fix 4).
+ *
+ * Intentionally duplicates the logic in Panel.tsx's `computeDraftState`
+ * rather than sharing it — they live on opposite sides of the data/view
+ * boundary and the duplication is tiny.
+ * --------------------------------------------------------------------------- */
+function mergeDraftFromHistory(history: Frame[]): {
+  body: string;
+  attachment?: Attachment;
+} | null {
+  let draftIdx = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const f = history[i];
+    if (f.type === "draft") {
+      draftIdx = i;
+      break;
+    }
+    if (f.type !== "draftUpdate") return null;
+  }
+  if (draftIdx === -1) return null;
+
+  const initial = history[draftIdx];
+  if (initial.type !== "draft") return null;
+
+  let body = initial.body;
+  let attachment: Attachment | undefined = initial.attachment;
+  for (let i = draftIdx + 1; i < history.length; i++) {
+    const f = history[i];
+    if (f.type !== "draftUpdate") return null;
+    body = f.newBody;
+    if (f.newAttachment) attachment = f.newAttachment;
+  }
+  return { body, attachment };
 }

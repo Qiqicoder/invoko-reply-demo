@@ -13,6 +13,8 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
+import { useApp, type SentReply } from "../../context/AppContext";
 import { WindowChrome } from "./WindowChrome";
 
 /**
@@ -128,6 +130,13 @@ function SidebarItem({
 /* ----------------------------- Reading Pane ----------------------------- */
 
 function EmailReadingPane() {
+  // Module F fix 4: after the user hits Send during Story 1, the AppContext
+  // stores the merged draft in `sentReplies[1]`. We render it below
+  // Sarah's email as a second message in the same thread — visual proof
+  // that the reply actually went out.
+  const { sentReplies } = useApp();
+  const story1Reply = sentReplies[1];
+
   return (
     <main className="flex h-full flex-1 flex-col overflow-hidden bg-white">
       {/* Toolbar above email */}
@@ -205,9 +214,104 @@ function EmailReadingPane() {
             </div>
           </div>
         </div>
+
+        {/* Sent reply (PRD §F + Module F fix 4) */}
+        {story1Reply && <SentReplyBlock reply={story1Reply} />}
       </div>
     </main>
   );
+}
+
+/* ----------------------------- Sent reply block ----------------------------- *
+ * Visual: same thread style as Sarah's message but with a subtle separator
+ * above and a small "Sent" mono caps tag in terracotta next to the
+ * timestamp. The body strips out [mem: …] highlight syntax — once the
+ * email is "sent" it's just plain text, not a live UI artefact.
+ * --------------------------------------------------------------------- */
+
+function SentReplyBlock({ reply }: { reply: SentReply }) {
+  return (
+    <div
+      className="mt-6 pt-6"
+      style={{ borderTop: "1px solid #e2d8c2" }}
+    >
+      <div className="flex items-start gap-3">
+        <Avatar
+          initial="Z"
+          color="#9c4a2a"
+          ariaLabel="You (Ziying) avatar"
+        />
+        <div className="flex-1">
+          <div className="flex items-baseline justify-between">
+            <div>
+              <span className="font-sans text-[14px] font-semibold text-ink">
+                You
+              </span>
+              <span className="ml-2 text-[12px] text-ink-3">
+                &lt;ziying@invoko.ai&gt;
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span
+                className="font-mono text-[10px] font-semibold uppercase tracking-wider"
+                style={{ color: "#9c4a2a", letterSpacing: "0.08em" }}
+              >
+                Sent
+              </span>
+              <span className="text-[12px] text-ink-3">
+                {reply.sentAt}
+              </span>
+            </div>
+          </div>
+          <div className="text-[12px] text-ink-3">to Sarah Liu</div>
+
+          <div className="mt-5 space-y-4 font-sans text-[14px] leading-[1.65] text-ink-2">
+            {renderPlainBody(reply.body)}
+          </div>
+
+          {reply.attachment && (
+            <div className="mt-5 flex items-center gap-2">
+              <span
+                className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] text-ink-2"
+                style={{
+                  borderColor: "#d6cab2",
+                  background: "#faf7ef",
+                }}
+              >
+                <span
+                  className="font-mono text-[9px] font-semibold uppercase tracking-wider"
+                  style={{
+                    background: "#9c4a2a",
+                    color: "#ffffff",
+                    padding: "2px 5px",
+                    borderRadius: 4,
+                  }}
+                >
+                  {reply.attachment.type.toUpperCase()}
+                </span>
+                {reply.attachment.name}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Render the sent draft body as plain paragraphs. Strips `[mem: text]`
+ * down to just `text` — memory highlights are a live Panel-time visual,
+ * not part of the email that lands in Sarah's inbox.
+ */
+function renderPlainBody(body: string): ReactNode {
+  const stripped = body.replace(/\[mem:\s*([^\]]+)\]/g, "$1");
+  const paragraphs = stripped.split(/\n\n+/).map((p) => p.trim());
+  return paragraphs.map((p, i) => (
+    <Fragment key={i}>
+      <p>{p}</p>
+    </Fragment>
+  ));
 }
 
 function ActionButton({

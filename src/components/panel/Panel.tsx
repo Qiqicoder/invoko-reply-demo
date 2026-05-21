@@ -5,7 +5,7 @@ import type { Attachment, Frame } from "../../stories/types";
 import { PanelCalendarConfirm } from "./PanelCalendarConfirm";
 import { PanelDraft } from "./PanelDraft";
 import { PanelInput } from "./PanelInput";
-import { PanelMessage } from "./PanelMessage";
+import { PanelMessage, thinkingFrameDurationMs } from "./PanelMessage";
 import { PanelOptions } from "./PanelOptions";
 import { PanelQuickActions } from "./PanelQuickActions";
 import { PanelToast } from "./PanelToast";
@@ -117,8 +117,9 @@ export function Panel() {
   useEffect(() => {
     if (!panelOpen) return;
     if (currentFrame?.type !== "thinking") return;
-    // Matches PanelMessage's stagger: STEP_DELAY=0.4s × lines + TRAILING=0.5s.
-    const ms = currentFrame.lines.length * 400 + 500;
+    // Matches PanelMessage: each line gets STEP_MS of "thinking" time,
+    // then TRAILING_PAUSE_MS after the last line (4 lines → ~10.5s).
+    const ms = thinkingFrameDurationMs(currentFrame.lines.length);
     const t = setTimeout(() => advanceToNext(), ms);
     return () => clearTimeout(t);
   }, [panelOpen, currentFrame, advanceToNext]);
@@ -254,7 +255,7 @@ export function Panel() {
                       <PanelDraft
                         body={draftState.body}
                         attachment={draftState.attachment}
-                        thinkingLine={draftState.thinkingLine}
+                        thinkingLines={draftState.thinkingLines}
                         isActive
                         onSend={handleAdvance}
                       />
@@ -382,15 +383,15 @@ function FrameRouter({
  *
  * Walks back from history's tail looking for the most recent `draft`, with
  * only `draftUpdate` frames allowed between it and the tail. The merged
- * body/attachment reflects every update applied in order; `thinkingLine`
- * comes from the LATEST draftUpdate iff it's the current frame — meaning
- * the transient "Got it — adjusting tone…" hint shows during exactly one
- * swap and goes away after PanelDraft's 800ms timer.
+ * body/attachment reflects every update applied in order; `thinkingLines`
+ * come from the LATEST draftUpdate iff it's the current frame — so the
+ * transient reasoning lines show during exactly one swap and disappear
+ * for good after PanelDraft's fade-out (Module F fix 2).
  * --------------------------------------------------------------------------- */
 function computeDraftState(history: Frame[]): {
   body: string;
   attachment?: Attachment;
-  thinkingLine?: string;
+  thinkingLines?: string[];
 } | null {
   let draftIdx = -1;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -411,18 +412,19 @@ function computeDraftState(history: Frame[]): {
 
   let body = initial.body;
   let attachment: Attachment | undefined = initial.attachment;
-  let thinkingLine: string | undefined;
+  let thinkingLines: string[] | undefined;
 
   for (let i = draftIdx + 1; i < history.length; i++) {
     const f = history[i];
     if (f.type !== "draftUpdate") return null;
     body = f.newBody;
     if (f.newAttachment) attachment = f.newAttachment;
-    // Only the last update's thinkingLine matters (and only if it's the tail).
-    thinkingLine = i === history.length - 1 ? f.thinkingLine : undefined;
+    // Only the last update's thinking lines matter, and only if it's the tail.
+    thinkingLines =
+      i === history.length - 1 ? f.thinkingLines : undefined;
   }
 
-  return { body, attachment, thinkingLine };
+  return { body, attachment, thinkingLines };
 }
 
 /* ------------------------- Voice hint (spec §5) ------------------------- */

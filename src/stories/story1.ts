@@ -93,10 +93,15 @@ export const STORY_1: Frame[] = [
   },
 
   // Frame 6 (Module E pattern): draftUpdate — replaces v1 body in place.
-  // The thinkingLine is what PRD §4.1 Frame 6 prefixed with "·".
+  // PRD §4.1 originally had a curt "Got it — adjusting tone…" line. Module
+  // F fix 2 swaps that for two warmer beats so the AI sounds like it
+  // *understood* the feedback, not just acknowledged a command.
   {
     type: "draftUpdate",
-    thinkingLine: "Got it — adjusting tone and rewriting the progress part.",
+    thinkingLines: [
+      "Yeah — the formal opener felt off, that's not how you actually talk.",
+      "Let me rewrite with more of your voice.",
+    ],
     newBody: [
       "Hey Sarah — good to hear from you.",
       "",
@@ -111,14 +116,26 @@ export const STORY_1: Frame[] = [
     newAttachment: { name: "Pitch Deck v3.pdf", type: "pdf" },
   },
 
-  // Frame 7 (PRD Frame 7): toast — three confirmation lines. PanelToast
-  // renders the checkmark glyphs, so the strings are plain text.
+  // Frame 7 (Module F fix 3): "MEMORY UPDATED" card — replaces PRD's flat
+  // 3-line toast with a richer summary of what the AI learned. Items
+  // stagger in with the ✓ scaling in 200ms after each line.
   {
     type: "toast",
-    lines: [
-      "Sent to Sarah Liu  ·  Pitch Deck v3 attached",
-      "Sarah added to your People as Investor",
-      "Voice learned: casual + chatty preferred for follow-ups",
+    header: "MEMORY UPDATED",
+    items: [
+      {
+        primary: "Sarah Liu added to People",
+        secondary: "Investor · Sequoia · introduced by Marcus",
+      },
+      {
+        primary: "Tone preference saved",
+        secondary: "Casual, warm — for investor follow-ups",
+      },
+      {
+        primary: "Active project context noted",
+        secondary: "Invoko beta · ~50 users · Q3 launch target",
+      },
     ],
+    duration: 6000,
   },
 ];

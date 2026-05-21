@@ -55,13 +55,20 @@ export type Frame =
       /**
        * In-place revision of the most recent `draft` frame. The Panel keeps
        * the existing draft card mounted; PanelDraft animates its body text
-       * to `newBody` and (optionally) shows a transient `thinkingLine` above
-       * the body for ~800ms before swapping. The Send button stays.
+       * to `newBody` and (optionally) shows transient `thinkingLines` above
+       * the body before swapping. The Send button stays.
+       *
+       * Timing (PanelDraft owns the choreography):
+       *   - Lines stagger in at 1500ms intervals (matches thinking frame)
+       *   - 800ms pause after the LAST line finishes entering
+       *   - Body swaps (cross-fade ~220ms)
+       *   - Lines persist ~600ms post-swap, then fade out together —
+       *     leaves only the new body visible
        */
       type: "draftUpdate";
       newBody: string;
       newAttachment?: Attachment;
-      thinkingLine?: string;
+      thinkingLines?: string[];
     }
   | {
       type: "calendarConfirm";
@@ -70,7 +77,43 @@ export type Frame =
       with: string;
       topic: string;
     }
-  | { type: "toast"; lines: string[]; duration?: number };
+  | ToastFrame;
+
+/* ------------------------------- Toast ------------------------------- *
+ * Two shapes — kept as a union so simple "✓ line / ✓ line" toasts and the
+ * richer "MEMORY UPDATED" memory-summary card (Module F fix 3) both
+ * compile against `Frame`. PanelToast branches at render time on whether
+ * `items` is present.
+ *
+ *   Simple:  { type: 'toast', lines: ['Sent', 'Saved', ...] }
+ *   Memory:  { type: 'toast', header: 'MEMORY UPDATED',
+ *               items: [{ primary, secondary }, ...] }
+ *
+ * `duration` controls dwell time before the exit animation starts.
+ * --------------------------------------------------------------------- */
+
+export interface ToastMemoryItem {
+  /** Bold primary line (Inter Tight ~13.5px). */
+  primary: string;
+  /** Soft secondary line (JetBrains Mono ~11.5px). */
+  secondary: string;
+}
+
+export type ToastFrame =
+  | {
+      type: "toast";
+      /** Simple-mode body. */
+      lines: string[];
+      duration?: number;
+    }
+  | {
+      type: "toast";
+      /** Mono caps header (e.g. "MEMORY UPDATED"). */
+      header: string;
+      /** Memory items rendered with a staggered ✓ scale-in. */
+      items: ToastMemoryItem[];
+      duration?: number;
+    };
 
 /** Convenience: extract the variant matching a given type literal. */
 export type FrameOf<T extends Frame["type"]> = Extract<Frame, { type: T }>;
