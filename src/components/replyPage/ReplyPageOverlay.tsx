@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
 import { useApp } from "../../context/AppContext";
+import { ReplyPage } from "./ReplyPage";
 
 /**
  * Main Reply page overlay (PRD Module H).
  *
- * Summoned with ⌘R (toggle). Shows the design mock as a windowed overlay
- * (~80% width, centered). Esc or click on the dim backdrop closes it.
+ * Summoned with ⌘R (toggle). Renders dynamic `ReplyPage` (~80% width).
+ * Esc or click on the dim backdrop closes it.
  */
 export function ReplyPageOverlay() {
   const { replyPageOpen, setReplyPageOpen } = useApp();
@@ -53,7 +54,6 @@ export function ReplyPageOverlay() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
-          {/* Backdrop — click outside to close (PRD H4) */}
           <button
             type="button"
             aria-label="Close Reply page"
@@ -61,12 +61,11 @@ export function ReplyPageOverlay() {
             onClick={close}
           />
 
-          {/* Windowed frame (~80% width, PRD H1 + H5) */}
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label="Invoko Reply"
-            className="relative max-h-[90vh] overflow-hidden rounded-2xl bg-paper shadow-[0_24px_64px_-12px_rgba(29,25,22,0.35)]"
+            className="relative flex max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-cream shadow-[0_24px_64px_-12px_rgba(29,25,22,0.35)]"
             style={{
               width: "min(80vw, 1280px)",
               border: "1px solid rgba(29,25,22,0.1)",
@@ -77,12 +76,7 @@ export function ReplyPageOverlay() {
             transition={{ type: "spring", damping: 26, stiffness: 320 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <img
-              src="/reply-main-page.png"
-              alt="Invoko Reply — People, Docs, and voice summary"
-              className="block h-auto max-h-[90vh] w-full object-contain object-top"
-              draggable={false}
-            />
+            <ReplyPage />
           </motion.div>
         </motion.div>
       )}

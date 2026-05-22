@@ -339,14 +339,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
               return next;
             });
           }
-          if (justFinished === 2) {
-            setAddedDocs((prev) => {
-              if (prev.has("q2roadmap")) return prev;
-              const next = new Set(prev);
-              next.add("q2roadmap");
-              return next;
-            });
-          }
           if (justFinished === 3) {
             setShowReplyPageHint(true);
           }
@@ -373,6 +365,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
               sentAt: "just now",
             },
           }));
+        }
+        // Story 2: Nick's PDF lands in Docs when the toast appears.
+        if (currentStory === 2) {
+          setAddedDocs((docIds) => {
+            if (docIds.has("q2roadmap")) return docIds;
+            const nextIds = new Set(docIds);
+            nextIds.add("q2roadmap");
+            return nextIds;
+          });
         }
       }
       return [...prev, next];

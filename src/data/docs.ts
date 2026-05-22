@@ -44,11 +44,16 @@ export const DOCS_DEFAULT: Doc[] = [
   },
 ];
 
-/** Added when Story 2 completes (PRD §4.2 + §G6). */
+/** Nick's PDF — added when Story 2 toast fires (screenshot source file). */
 export const Q2_ROADMAP_DOC: Doc = {
   id: "q2roadmap",
-  name: "Product Roadmap Q2 2024",
+  name: "Product Roadmap Q2 2024.pdf",
   type: "pdf",
-  source: "From chat (Nick)",
+  source: "Received from Nick",
   meta: "just now",
+};
+
+/** Docs revealed by story actions — keyed by `addedDocs` id in AppContext. */
+export const ADDED_DOCS_BY_ID: Record<string, Doc> = {
+  q2roadmap: Q2_ROADMAP_DOC,
 };
